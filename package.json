@@ -1,0 +1,55 @@
+{
+  "name": "graphql-testing-toolkit",
+  "version": "1.0.0",
+  "description": "Advanced GraphQL testing extension for developers and QA engineers",
+  "main": "background.js",
+  "scripts": {
+    "dev": "./scripts/dev-firefox.sh",
+    "dev:firefox": "./scripts/dev-firefox.sh",
+    "dev:chrome": "./scripts/dev-chrome.sh",
+    "build": "node build/build.js",
+    "build:firefox": "node build/build.js && echo 'Firefox build: dist/firefox/'",
+    "build:chrome": "node build/build.js && echo 'Chrome build: dist/chrome/'",
+    "package": "npm run build",
+    "package:firefox": "cd dist/firefox && zip -r ../graphql-testing-toolkit-firefox.zip .",
+    "package:chrome": "cd dist/chrome && zip -r ../graphql-testing-toolkit-chrome.zip .",
+    "publish:firefox": "web-ext sign --source-dir=dist/firefox",
+    "publish:chrome": "echo 'Upload dist/graphql-testing-toolkit-chrome.zip to Chrome Web Store'",
+    "lint": "echo 'Add ESLint configuration if needed'",
+    "test": "echo 'Add test suite if needed'",
+    "clean": "rm -rf dist/ web-ext-artifacts/",
+    "web-ext": "web-ext run --firefox-profile=dev --keep-profile-changes"
+  },
+  "keywords": [
+    "graphql",
+    "testing",
+    "debugging",
+    "firefox",
+    "chrome",
+    "extension",
+    "browser-extension",
+    "developer-tools",
+    "qa",
+    "mocking",
+    "monitoring",
+    "manifest-v2",
+    "manifest-v3"
+  ],
+  "author": "Mohamed Zumair",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/mhdzumair/graphql-testing-toolkit"
+  },
+  "bugs": {
+    "url": "https://github.com/mhdzumair/graphql-testing-toolkit/issues"
+  },
+  "homepage": "https://github.com/mhdzumair/graphql-testing-toolkit#readme",
+  "devDependencies": {
+    "web-ext": "^7.0.0",
+    "chrome-webstore-upload-cli": "^2.1.0"
+  },
+  "engines": {
+    "node": ">=14.0.0"
+  }
+}

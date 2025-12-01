@@ -1,0 +1,59 @@
+{
+  "manifest_version": 3,
+  "name": "GraphQL Testing Toolkit",
+  "version": "1.1.0",
+  "description": "Advanced GraphQL testing extension for developers and QA engineers. Monitor, mock, and modify GraphQL requests with ease.",
+  "author": "Mohamed Zumair",
+
+  "permissions": [
+    "activeTab",
+    "storage"
+  ],
+
+  "host_permissions": [
+    "<all_urls>"
+  ],
+
+  "background": {
+    "service_worker": "src/background/service-worker.js"
+  },
+
+  "content_scripts": [{
+    "matches": ["<all_urls>"],
+    "js": ["src/content/content-script.js"],
+    "run_at": "document_start",
+    "all_frames": true
+  }],
+
+  "devtools_page": "src/devtools/devtools.html",
+
+  "action": {
+    "default_title": "GraphQL Testing Toolkit",
+    "default_popup": "src/popup/popup.html",
+    "default_icon": {
+      "16": "assets/icons/icon-16.png",
+      "32": "assets/icons/icon-32.png",
+      "48": "assets/icons/icon-48.png",
+      "128": "assets/icons/icon-128.png"
+    }
+  },
+
+  "icons": {
+    "16": "assets/icons/icon-16.png",
+    "32": "assets/icons/icon-32.png",
+    "48": "assets/icons/icon-48.png",
+    "128": "assets/icons/icon-128.png"
+  },
+
+  "web_accessible_resources": [{
+    "resources": [
+      "src/content/injected-script.js",
+      "src/libs/highlight.min.js",
+      "src/libs/json.min.js",
+      "src/libs/graphql.min.js",
+      "src/libs/highlight-dark.css",
+      "src/libs/highlight-light.css"
+    ],
+    "matches": ["<all_urls>"]
+  }]
+}

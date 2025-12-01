@@ -1,0 +1,12 @@
+web-ext-artifacts/
+# Editor directories and files
+.idea
+.vscode
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+.DS_Store
+artifacts/
+dist/

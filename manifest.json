@@ -1,0 +1,68 @@
+{
+  "manifest_version": 2,
+  "name": "GraphQL Testing Toolkit",
+  "version": "1.1.0",
+  "description": "Advanced GraphQL testing extension for developers and QA engineers. Monitor, mock, and modify GraphQL requests with ease.",
+  "developer": {
+    "name": "Mohamed Zumair",
+    "url": "https://github.com/mhdzumair"
+  },
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "graphql-testing-toolkit@mhdzumair"
+    }
+  },
+  "permissions": [
+    "activeTab",
+    "storage",
+    "<all_urls>",
+    "devtools",
+    "tabs"
+  ],
+
+  "background": {
+    "scripts": [
+      "src/background/core.js",
+      "src/background/icon-manager.js",
+      "src/background/firefox-adapter.js",
+      "src/background/background.js"
+    ],
+    "persistent": true
+  },
+
+  "content_scripts": [{
+    "matches": ["<all_urls>"],
+    "js": ["src/content/content-script.js"],
+    "run_at": "document_start",
+    "all_frames": true
+  }],
+
+  "devtools_page": "src/devtools/devtools.html",
+
+  "browser_action": {
+    "default_title": "GraphQL Testing Toolkit",
+    "default_popup": "src/popup/popup.html",
+    "default_icon": {
+      "16": "assets/icons/icon-16.png",
+      "32": "assets/icons/icon-32.png",
+      "48": "assets/icons/icon-48.png",
+      "128": "assets/icons/icon-128.png"
+    }
+  },
+
+  "icons": {
+    "16": "assets/icons/icon-16.png",
+    "32": "assets/icons/icon-32.png",
+    "48": "assets/icons/icon-48.png",
+    "128": "assets/icons/icon-128.png"
+  },
+
+  "web_accessible_resources": [
+    "src/content/injected-script.js",
+    "src/libs/highlight.min.js",
+    "src/libs/json.min.js",
+    "src/libs/graphql.min.js",
+    "src/libs/highlight-dark.css",
+    "src/libs/highlight-light.css"
+  ]
+}
