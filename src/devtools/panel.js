@@ -55,9 +55,17 @@ class GraphQLTestingPanel {
         variables: {},
       };
 
+      // Page navigation tracking for request grouping
+      this.pageGroups = [];
+      this.currentPageGroup = null;
+      this.lastPageUrl = null;
+      this.pendingRequestTimeout = 30000; // 30 seconds default timeout
+      this.autoGroupByNavigation = true; // Group requests by page navigation
+
       this.initializeElements();
       this.setupEventListeners();
       this.setupMessageListener();
+      this.setupNavigationListener();
       this.loadInitialData();
 
       console.log("✅ [PANEL] Panel initialized successfully");
@@ -156,7 +164,8 @@ class GraphQLTestingPanel {
     this.endpointSelect = document.getElementById("endpointSelect");
     this.detectedEndpoints = document.getElementById("detectedEndpoints");
     this.manualEndpoint = document.getElementById("manualEndpoint");
-    this.clearEndpointBtn = document.getElementById("clearEndpointBtn");
+    this.editEndpointBtn = document.getElementById("editEndpointBtn");
+    this.backToDetectedBtn = document.getElementById("backToDetectedBtn");
     this.loadSchemaBtn = document.getElementById("loadSchemaBtn");
     this.schemaSearch = document.getElementById("schemaSearch");
     this.authType = document.getElementById("authType");
@@ -226,6 +235,9 @@ class GraphQLTestingPanel {
     this.cancelRuleBtn.addEventListener("click", () => this.hideRuleEditor());
     this.ruleEditorForm.addEventListener("submit", (e) => this.saveRule(e));
 
+    // Listen for rules updated event (from AI mock generation)
+    document.addEventListener("rulesUpdated", () => this.refreshRules());
+
     // Confirmation modal events
     this.confirmCancel.addEventListener("click", () => this.hideConfirmation());
     this.confirmDelete.addEventListener("click", () =>
@@ -238,6 +250,25 @@ class GraphQLTestingPanel {
     // Filter events
     this.unifiedFilter.addEventListener("input", () => this.updateFilters());
     this.clearFiltersBtn.addEventListener("click", () => this.clearFilters());
+    
+    // Stat badge filter clicks
+    document.querySelectorAll('.stat-badge.clickable').forEach(badge => {
+      badge.addEventListener('click', () => {
+        const filterType = badge.dataset.filter;
+        this.filterByType(filterType);
+        // Update active state
+        document.querySelectorAll('.stat-badge.clickable').forEach(b => b.classList.remove('active'));
+        if (filterType !== 'all') {
+          badge.classList.add('active');
+        }
+      });
+    });
+    
+    // Request type filter dropdown
+    const requestTypeFilter = document.getElementById('requestTypeFilter');
+    if (requestTypeFilter) {
+      requestTypeFilter.addEventListener('change', () => this.applyFilters());
+    }
 
     // Settings events
     this.saveSettingsBtn.addEventListener("click", () => this.saveSettings());
@@ -253,9 +284,18 @@ class GraphQLTestingPanel {
     this.endpointSelect.addEventListener("change", () =>
       this.selectDetectedEndpoint()
     );
-    this.clearEndpointBtn.addEventListener("click", () =>
-      this.clearSelectedEndpoint()
-    );
+    // Edit button - switch to manual input mode
+    if (this.editEndpointBtn) {
+      this.editEndpointBtn.addEventListener("click", () =>
+        this.showManualEndpointInput()
+      );
+    }
+    // Back button - return to detected endpoints
+    if (this.backToDetectedBtn) {
+      this.backToDetectedBtn.addEventListener("click", () =>
+        this.showDetectedEndpoints()
+      );
+    }
     this.schemaSearch.addEventListener("input", () => this.filterSchema());
     this.executeQueryBtn.addEventListener("click", () => this.executeQuery());
     this.authType.addEventListener("change", () => this.updateAuthFields());
@@ -318,6 +358,97 @@ class GraphQLTestingPanel {
         this.hideRuleEditor();
       }
     });
+  }
+
+  setupNavigationListener() {
+    // Listen for page navigation events
+    const devtools = chrome.devtools || browser.devtools;
+    
+    if (devtools && devtools.network) {
+      devtools.network.onNavigated.addListener((url) => {
+        console.log(`🔄 [PANEL] Page navigated to: ${url}`);
+        this.handlePageNavigation(url);
+      });
+    }
+    
+    // Also listen for tab updates via runtime messages
+    const runtime = chrome.runtime || browser.runtime;
+    runtime.onMessage.addListener((message, sender, sendResponse) => {
+      if (message.type === 'TAB_NAVIGATED' && message.tabId === this.tabId) {
+        console.log(`🔄 [PANEL] Tab navigated to: ${message.url}`);
+        this.handlePageNavigation(message.url);
+      }
+    });
+    
+    // Initialize first page group - get the inspected window URL
+    this.initializeFirstPageGroup();
+  }
+
+  async initializeFirstPageGroup() {
+    try {
+      // Get the actual inspected page URL using devtools API
+      if (typeof chrome !== 'undefined' && chrome.devtools && chrome.devtools.inspectedWindow) {
+        chrome.devtools.inspectedWindow.eval(
+          'window.location.href',
+          (result, error) => {
+            if (!error && result) {
+              this.lastPageUrl = result;
+              const pageName = this.getPageNameFromUrl(result);
+              this.startNewPageGroup(pageName, result);
+            } else {
+              this.startNewPageGroup('Initial Page Load', 'Unknown');
+            }
+          }
+        );
+      } else {
+        this.startNewPageGroup('Initial Page Load', 'Unknown');
+      }
+    } catch (e) {
+      console.warn('[PANEL] Could not get inspected window URL:', e);
+      this.startNewPageGroup('Initial Page Load', 'Unknown');
+    }
+  }
+
+  handlePageNavigation(url) {
+    // Start a new page group when navigation occurs
+    if (url !== this.lastPageUrl) {
+      this.lastPageUrl = url;
+      const pageName = this.getPageNameFromUrl(url);
+      this.startNewPageGroup(pageName, url);
+    }
+  }
+
+  startNewPageGroup(pageName, url) {
+    const newGroup = {
+      id: 'page_' + Date.now(),
+      name: pageName,
+      url: url || this.lastPageUrl || 'Unknown',
+      startTime: new Date().toISOString(),
+      requests: []
+    };
+    
+    this.currentPageGroup = newGroup;
+    this.pageGroups.push(newGroup);
+    
+    console.log(`📦 [PANEL] Started new page group: ${pageName} (${url || 'no url'})`);
+  }
+
+  getPageNameFromUrl(url) {
+    if (!url) return 'Page Load';
+    try {
+      const urlObj = new URL(url);
+      const pathname = urlObj.pathname;
+      // Get last meaningful path segment
+      const segments = pathname.split('/').filter(s => s);
+      if (segments.length > 0) {
+        const lastSegment = segments[segments.length - 1];
+        // Capitalize and clean up
+        return lastSegment.charAt(0).toUpperCase() + lastSegment.slice(1).replace(/[-_]/g, ' ');
+      }
+      return urlObj.hostname || 'Home';
+    } catch (e) {
+      return 'Page Load';
+    }
   }
 
   setupMessageListener() {
@@ -544,11 +675,45 @@ class GraphQLTestingPanel {
     // Detect GraphQL endpoints for schema explorer
     this.detectGraphQLEndpoint(request);
 
+    // Handle frame context for request grouping
+    if (request.frameContext && request.frameContext.isIframe) {
+      // Create or find iframe group
+      const iframeGroupId = 'iframe_' + (request.frameContext.frameUrl || 'unknown');
+      let iframeGroup = this.pageGroups.find(g => g.id === iframeGroupId);
+      
+      if (!iframeGroup) {
+        iframeGroup = {
+          id: iframeGroupId,
+          name: request.frameContext.frameName || 'Iframe',
+          url: request.frameContext.frameUrl,
+          startTime: new Date().toISOString(),
+          requests: [],
+          isIframe: true,
+          parentOrigin: request.frameContext.parentOrigin
+        };
+        this.pageGroups.push(iframeGroup);
+      }
+      request._groupId = iframeGroupId; // Store group ID in request
+      iframeGroup.requests.push(request);
+    } else if (this.currentPageGroup) {
+      // Add request to current page group (main frame)
+      request._groupId = this.currentPageGroup.id; // Store group ID in request
+      this.currentPageGroup.requests.push(request);
+    }
+
     this.requestLog.push(request);
+
+    // Dispatch event for time-travel recording
+    document.dispatchEvent(new CustomEvent('requestLogged', { 
+      detail: request 
+    }));
 
     // Start live timing for pending requests
     if (!request.response && !request.responseError) {
       this.startLiveTiming(request.id);
+      
+      // Set up timeout for pending requests
+      this.setupRequestTimeout(request.id);
     }
 
     // Keep log size manageable
@@ -560,19 +725,50 @@ class GraphQLTestingPanel {
     this.applyFilters();
     this.updateRequestLog();
 
-    // Auto-scroll if enabled
+    // Auto-scroll if enabled - scroll to bottom of container where new requests appear
     if (this.autoScrollToggle.checked) {
-      const lastItem = this.requestLogElement.lastElementChild;
-      if (lastItem) {
-        lastItem.scrollIntoView({ behavior: "smooth" });
-      }
+      // Use scrollTop = scrollHeight to scroll to the bottom of the container
+      // This ensures we see the newest request, not the group header
+      this.requestLogElement.scrollTop = this.requestLogElement.scrollHeight;
     }
+  }
+
+  setupRequestTimeout(requestId) {
+    // Set a timeout to mark request as timed out if no response received
+    const timeoutMs = this.pendingRequestTimeout || 30000;
+    
+    setTimeout(() => {
+      const request = this.requestLog.find((req) => req.id === requestId);
+      if (request && !request.response && !request.responseError) {
+        console.log(`⏰ [PANEL] Request ${requestId} timed out after ${timeoutMs}ms`);
+        request.responseError = `Request timed out after ${timeoutMs / 1000}s`;
+        request.responseTimestamp = Date.now();
+        request.timedOut = true;
+        
+        // Stop live timing
+        this.stopLiveTiming(requestId);
+        
+        // Update display
+        this.applyFilters();
+        this.updateRequestLog();
+      }
+    }, timeoutMs);
   }
 
   // Update filter state and apply filters
   updateFilters() {
     this.filters.search = this.unifiedFilter.value.trim().toLowerCase();
 
+    this.applyFilters();
+    this.updateRequestLog();
+  }
+
+  // Filter by request type via stat badge click
+  filterByType(type) {
+    const requestTypeFilter = document.getElementById('requestTypeFilter');
+    if (requestTypeFilter) {
+      requestTypeFilter.value = type;
+    }
     this.applyFilters();
     this.updateRequestLog();
   }
@@ -638,6 +834,14 @@ class GraphQLTestingPanel {
         }
       }
 
+      // Type filter (GraphQL/REST)
+      const typeFilter = document.getElementById('requestTypeFilter')?.value;
+      if (typeFilter && typeFilter !== 'all') {
+        if (request.requestType !== typeFilter) {
+          return false;
+        }
+      }
+
       return true;
     });
   }
@@ -645,10 +849,15 @@ class GraphQLTestingPanel {
   // Clear all filters
   clearFilters() {
     this.unifiedFilter.value = "";
+    const requestTypeFilter = document.getElementById('requestTypeFilter');
+    if (requestTypeFilter) requestTypeFilter.value = 'all';
 
     this.filters = {
       search: "",
     };
+    
+    // Clear active state from stat badges
+    document.querySelectorAll('.stat-badge.clickable').forEach(b => b.classList.remove('active'));
 
     this.applyFilters();
     this.updateRequestLog();
@@ -674,6 +883,14 @@ class GraphQLTestingPanel {
       request.responseHeaders =
         responseData.responseHeaders || responseData.headers;
       request.responseError = responseData.responseError || responseData.error;
+
+      // Dispatch event for time-travel recording
+      document.dispatchEvent(new CustomEvent('responseLogged', { 
+        detail: {
+          requestId,
+          ...responseData
+        }
+      }));
 
       // Set response timestamp - try multiple possible field names
       request.responseTimestamp =
@@ -767,24 +984,40 @@ class GraphQLTestingPanel {
     const filteredCount = this.filteredRequestLog.length;
 
     if (totalCount !== filteredCount) {
-      this.requestCount.textContent = `${filteredCount} of ${totalCount} requests`;
+      this.requestCount.textContent = `${filteredCount} matching`;
     } else {
       this.requestCount.textContent = `${totalCount} requests`;
     }
 
+    // Update monitor stats badges
+    this.updateMonitorStats();
+
     if (this.filteredRequestLog.length === 0) {
       if (totalCount === 0) {
-        this.requestLogElement.innerHTML =
-          '<div class="no-requests">No GraphQL requests detected yet...</div>';
+        this.requestLogElement.innerHTML = `
+          <div class="no-requests">
+            <div class="no-requests-icon">📡</div>
+            <div class="no-requests-text">No API requests detected yet</div>
+            <div class="no-requests-hint">Enable monitoring and refresh the page to capture requests</div>
+          </div>`;
       } else {
-        this.requestLogElement.innerHTML =
-          '<div class="no-requests">No requests match current filters...</div>';
+        this.requestLogElement.innerHTML = `
+          <div class="no-requests">
+            <div class="no-requests-icon">🔍</div>
+            <div class="no-requests-text">No requests match your filters</div>
+            <div class="no-requests-hint">Try adjusting your search criteria</div>
+          </div>`;
       }
       return;
     }
 
-    const html = this.filteredRequestLog
-      .map((request, filteredIndex) => {
+    // Group requests by session (based on time gaps)
+    const groupedRequests = this.groupRequestsBySession(this.filteredRequestLog);
+    
+    const html = groupedRequests.map((group, groupIndex) => {
+      const groupTime = new Date(group.startTime).toLocaleTimeString();
+      const groupDate = new Date(group.startTime).toLocaleDateString();
+      const requestsHtml = group.requests.map((request, filteredIndex) => {
         // Find the original index in the full request log for proper data access
         const originalIndex = this.requestLog.findIndex(
           (r) => r.id === request.id
@@ -812,15 +1045,26 @@ class GraphQLTestingPanel {
               )}">🎯 ${matchedRules.join(", ")}</span>`
             : "";
 
+        // Determine request type badge and method display
+        const requestType = request.requestType || 'graphql';
+        const typeBadge = `<span class="request-type-badge ${requestType}">${requestType.toUpperCase()}</span>`;
+        const methodDisplay = requestType === 'rest' 
+          ? `<span class="request-method ${(request.method || 'GET').toLowerCase()}">${request.method || 'GET'}</span>`
+          : '<span class="request-method post">POST</span>';
+
+        // Generate operation name based on request type
+        const operationName = this.getOperationDisplayName(request);
+
         return `
       <div class="request-item ${ruleClass}" data-request-index="${originalIndex}" data-filtered-index="${filteredIndex}">
         <div class="request-header" data-request-index="${originalIndex}">
           <div class="request-info">
-            <span class="operation-name">${
-              request.operationName || "Unnamed Operation"
-            }</span>
+            <div class="operation-name-row">
+              ${typeBadge}
+              <span class="operation-name">${operationName}</span>
+            </div>
             <div class="request-meta">
-              <span class="request-method">POST</span>
+              ${methodDisplay}
               ${timingDisplay}
               ${ruleIndicator}
               <span class="request-timestamp">${new Date(
@@ -830,13 +1074,15 @@ class GraphQLTestingPanel {
           </div>
           <div class="request-status-actions">
             ${responseStatus}
-            <button class="btn-create-rule" data-request-index="${originalIndex}">Create Rule</button>
+            <button class="btn-create-rule" data-request-index="${originalIndex}" title="Create mock rule">+ Rule</button>
+            <button class="btn-ai btn-sm" data-request-index="${originalIndex}" title="Generate AI mock">🤖 AI Mock</button>
           </div>
         </div>
         <div class="request-url" style="padding: 0 12px 8px 12px; font-size: 11px; color: var(--text-secondary);">${
           request.url
         }</div>
         <div class="request-details" id="details-${originalIndex}" style="display: none; padding: 0 12px 12px 12px;">
+          ${requestType === 'graphql' ? `
           <div class="detail-section">
             <div class="detail-header" data-section="query-${originalIndex}">
               <strong>Query</strong>
@@ -856,7 +1102,17 @@ class GraphQLTestingPanel {
               </div>
             </div>
             <div class="code-block collapsed" id="variables-${originalIndex}" data-content="variables"></div>
-          </div>
+          </div>` : `
+          <div class="detail-section">
+            <div class="detail-header" data-section="body-${originalIndex}">
+              <strong>Request Body</strong>
+              <div class="detail-actions">
+                <button class="btn-copy" data-copy-type="body" data-request-index="${originalIndex}">Copy</button>
+                <span class="expand-indicator">▶</span>
+              </div>
+            </div>
+            <div class="code-block collapsed" id="body-${originalIndex}" data-content="body"></div>
+          </div>`}
           <div class="detail-section">
             <div class="detail-header" data-section="response-${originalIndex}">
               <strong>Response</strong>
@@ -884,8 +1140,30 @@ class GraphQLTestingPanel {
           }
         </div>
       </div>`;
-      })
-      .join("");
+      }).join("");
+
+      // Use page name if available, otherwise fall back to session number
+      const groupTitle = group.name || `Session ${groupIndex + 1}`;
+      const groupUrl = group.url ? `<span class="group-url" title="${group.url}">${this.truncateUrl(group.url, 50)}</span>` : '';
+      const groupIcon = group.isIframe ? '📎' : (group.url ? '🌐' : '📦');
+      const frameIndicator = group.isIframe ? '<span class="frame-badge" title="Iframe content">iframe</span>' : '';
+      
+      return `
+        <div class="request-group" data-group-index="${groupIndex}" data-is-iframe="${group.isIframe || false}">
+          <div class="request-group-header" data-group-index="${groupIndex}">
+            <span class="group-toggle">▼</span>
+            <span class="group-icon">${groupIcon}</span>
+            ${frameIndicator}
+            <span class="group-title">${groupTitle}</span>
+            ${groupUrl}
+            <span class="group-time">${groupDate} ${groupTime}</span>
+            <span class="group-count">${group.requests.length} requests</span>
+          </div>
+          <div class="request-group-content" id="group-content-${groupIndex}">
+            ${requestsHtml}
+          </div>
+        </div>`;
+    }).join("");
 
     this.requestLogElement.innerHTML = html;
 
@@ -933,6 +1211,17 @@ class GraphQLTestingPanel {
         });
       });
 
+    // Add event listeners for AI mock buttons
+    this.requestLogElement
+      .querySelectorAll(".btn-ai")
+      .forEach((button) => {
+        button.addEventListener("click", (e) => {
+          e.stopPropagation();
+          const index = parseInt(button.dataset.requestIndex);
+          this.generateAIMockFromRequest(index);
+        });
+      });
+
     // Add event listeners for copy buttons
     this.requestLogElement.querySelectorAll(".btn-copy").forEach((button) => {
       button.addEventListener("click", (e) => {
@@ -940,6 +1229,59 @@ class GraphQLTestingPanel {
         this.copyToClipboard(button);
       });
     });
+
+    // Add event listeners for request group headers
+    this.requestLogElement
+      .querySelectorAll(".request-group-header")
+      .forEach((header) => {
+        header.addEventListener("click", (e) => {
+          const groupIndex = header.dataset.groupIndex;
+          this.toggleRequestGroup(groupIndex);
+        });
+      });
+  }
+
+  toggleRequestGroup(groupIndex) {
+    const header = this.requestLogElement.querySelector(
+      `.request-group-header[data-group-index="${groupIndex}"]`
+    );
+    const content = document.getElementById(`group-content-${groupIndex}`);
+    
+    if (header && content) {
+      const toggle = header.querySelector('.group-toggle');
+      const isCollapsed = content.style.display === 'none';
+      
+      content.style.display = isCollapsed ? 'block' : 'none';
+      if (toggle) {
+        toggle.textContent = isCollapsed ? '▼' : '▶';
+      }
+      header.classList.toggle('collapsed', !isCollapsed);
+    }
+  }
+
+  updateMonitorStats() {
+    const totalEl = document.getElementById('totalMonitorRequests');
+    const graphqlEl = document.getElementById('graphqlMonitorCount');
+    const restEl = document.getElementById('restMonitorCount');
+    
+    const total = this.requestLog.length;
+    const graphql = this.requestLog.filter(r => r.requestType === 'graphql').length;
+    const rest = this.requestLog.filter(r => r.requestType === 'rest').length;
+    
+    if (totalEl) totalEl.textContent = total;
+    if (graphqlEl) graphqlEl.textContent = graphql;
+    if (restEl) restEl.textContent = rest;
+  }
+
+  async generateAIMockFromRequest(index) {
+    const request = this.requestLog[index];
+    if (!request) return;
+
+    // Dispatch event to panel-extensions for AI mock generation
+    const event = new CustomEvent('generateAIMock', { 
+      detail: { request, index }
+    });
+    document.dispatchEvent(event);
   }
 
   populateCodeBlocks() {
@@ -948,27 +1290,43 @@ class GraphQLTestingPanel {
       const originalIndex = this.requestLog.findIndex(
         (r) => r.id === request.id
       );
+      const isGraphQL = request.requestType !== 'rest';
 
-      // Populate query
-      const queryBlock = document.getElementById(`query-${originalIndex}`);
-      if (queryBlock) {
-        const queryCode = this.escapeHtml(request.query || "");
-        queryBlock.innerHTML = `<pre><code class="language-graphql">${queryCode}</code></pre>`;
-        queryBlock.classList.add("collapsed");
-      }
+      if (isGraphQL) {
+        // Populate query (GraphQL only)
+        const queryBlock = document.getElementById(`query-${originalIndex}`);
+        if (queryBlock) {
+          const queryCode = this.escapeHtml(request.query || "");
+          queryBlock.innerHTML = `<pre><code class="language-graphql">${queryCode}</code></pre>`;
+          queryBlock.classList.add("collapsed");
+        }
 
-      // Populate variables
-      const variablesBlock = document.getElementById(
-        `variables-${originalIndex}`
-      );
-      if (variablesBlock) {
-        const variablesCode = this.escapeHtml(
-          typeof request.variables === "object"
-            ? JSON.stringify(request.variables, null, 2)
-            : request.variables || "{}"
+        // Populate variables (GraphQL only)
+        const variablesBlock = document.getElementById(
+          `variables-${originalIndex}`
         );
-        variablesBlock.innerHTML = `<pre><code class="language-json">${variablesCode}</code></pre>`;
-        variablesBlock.classList.add("collapsed");
+        if (variablesBlock) {
+          const variablesCode = this.escapeHtml(
+            typeof request.variables === "object"
+              ? JSON.stringify(request.variables, null, 2)
+              : request.variables || "{}"
+          );
+          variablesBlock.innerHTML = `<pre><code class="language-json">${variablesCode}</code></pre>`;
+          variablesBlock.classList.add("collapsed");
+        }
+      } else {
+        // Populate body (REST only)
+        const bodyBlock = document.getElementById(`body-${originalIndex}`);
+        if (bodyBlock) {
+          const bodyContent = request.body || request.queryParams || {};
+          const bodyCode = this.escapeHtml(
+            typeof bodyContent === "object"
+              ? JSON.stringify(bodyContent, null, 2)
+              : bodyContent || "No request body"
+          );
+          bodyBlock.innerHTML = `<pre><code class="language-json">${bodyCode}</code></pre>`;
+          bodyBlock.classList.add("collapsed");
+        }
       }
 
       // Populate response
@@ -1079,6 +1437,24 @@ class GraphQLTestingPanel {
       // Fallback: show text in a modal or alert
       const fallbackText = `Failed to copy automatically. Here's the content:\n\n${textToCopy}`;
       alert(fallbackText);
+    }
+  }
+
+  async refreshRules() {
+    try {
+      console.log("🔄 [PANEL] Refreshing rules from background...");
+      const response = await this.sendMessage({
+        type: "GET_RULES",
+        tabId: this.tabId,
+      });
+
+      if (response && response.success) {
+        this.rules = new Map(response.data.rules);
+        this.updateRulesList();
+        console.log(`✅ [PANEL] Rules refreshed: ${this.rules.size} rules loaded`);
+      }
+    } catch (error) {
+      console.error("❌ [PANEL] Failed to refresh rules:", error);
     }
   }
 
@@ -1211,18 +1587,60 @@ class GraphQLTestingPanel {
     this.delayFields.style.display = action === "delay" ? "block" : "none";
     this.mockFields.style.display = action === "mock" ? "block" : "none";
     this.modifyFields.style.display = action === "modify" ? "block" : "none";
+    
+    const redirectFields = document.getElementById('redirectFields');
+    if (redirectFields) {
+      redirectFields.style.display = action === "redirect" ? "block" : "none";
+    }
   }
 
   async saveRule(e) {
     e.preventDefault();
 
+    const requestType = document.getElementById('ruleRequestType').value;
+    
     const rule = {
       name: this.ruleName.value,
-      operationName: this.ruleOperationName.value,
-      urlPattern: this.ruleUrlPattern.value.trim() || null, // null if empty
+      requestType: requestType,
+      urlPattern: this.ruleUrlPattern.value.trim() || null, // Domain pattern (optional)
       action: this.ruleAction.value,
       enabled: true,
+      statusCode: document.getElementById('ruleStatusCode').value || null, // Response status code
     };
+
+    // Add type-specific fields
+    if (requestType === 'graphql' || requestType === 'both') {
+      rule.operationName = this.ruleOperationName.value.trim() || null;
+      rule.graphqlEndpoint = document.getElementById('ruleGraphqlEndpoint')?.value.trim() || null;
+    }
+    
+    if (requestType === 'rest' || requestType === 'both') {
+      rule.httpMethod = document.getElementById('ruleHttpMethod')?.value || 'ALL';
+      rule.restPath = document.getElementById('ruleRestPath')?.value.trim() || null;
+      rule.restEndpoint = document.getElementById('ruleRestEndpoint')?.value.trim() || null;
+      
+      // Query parameter filter
+      const queryFilterEl = document.getElementById('ruleQueryFilter');
+      if (queryFilterEl && queryFilterEl.value.trim()) {
+        try {
+          rule.queryFilter = JSON.parse(queryFilterEl.value.trim());
+        } catch (e) {
+          alert('Invalid JSON in Query Parameter Filter');
+          return;
+        }
+      }
+      
+      // Request body pattern (regex)
+      const bodyFilterEl = document.getElementById('ruleBodyFilter');
+      if (bodyFilterEl && bodyFilterEl.value.trim()) {
+        rule.bodyPattern = bodyFilterEl.value.trim();
+      }
+    }
+    
+    // For backward compatibility, keep operationName if it was set
+    if (!rule.operationName && this.ruleOperationName.value) {
+      rule.operationName = this.ruleOperationName.value;
+    }
 
     // Add action-specific data
     if (rule.action === "delay") {
@@ -1230,13 +1648,48 @@ class GraphQLTestingPanel {
     } else if (rule.action === "mock") {
       try {
         rule.mockResponse = JSON.parse(this.mockResponse.value);
+        // Add response headers if provided
+        const mockHeadersEl = document.getElementById('mockResponseHeaders');
+        if (mockHeadersEl && mockHeadersEl.value.trim()) {
+          rule.mockResponseHeaders = JSON.parse(mockHeadersEl.value);
+        }
       } catch (error) {
-        alert("Invalid JSON in mock response");
+        alert("Invalid JSON in mock response or headers: " + error.message);
         return;
       }
     } else if (rule.action === "modify") {
       try {
         rule.modifications = {};
+
+        // Parse headers modifications
+        const modifyHeadersEl = document.getElementById('modifyHeaders');
+        if (modifyHeadersEl && modifyHeadersEl.value.trim()) {
+          rule.modifications.headers = JSON.parse(modifyHeadersEl.value);
+        }
+        const deleteHeadersEl = document.getElementById('deleteHeaders');
+        if (deleteHeadersEl && deleteHeadersEl.value.trim()) {
+          rule.modifications.deleteHeaders = deleteHeadersEl.value.split(',').map(h => h.trim()).filter(h => h);
+        }
+
+        // Parse query params modifications
+        const modifyQueryParamsEl = document.getElementById('modifyQueryParams');
+        if (modifyQueryParamsEl && modifyQueryParamsEl.value.trim()) {
+          rule.modifications.queryParams = JSON.parse(modifyQueryParamsEl.value);
+        }
+        const deleteQueryParamsEl = document.getElementById('deleteQueryParams');
+        if (deleteQueryParamsEl && deleteQueryParamsEl.value.trim()) {
+          rule.modifications.deleteQueryParams = deleteQueryParamsEl.value.split(',').map(p => p.trim()).filter(p => p);
+        }
+
+        // Parse cookies modifications
+        const modifyCookiesEl = document.getElementById('modifyCookies');
+        if (modifyCookiesEl && modifyCookiesEl.value.trim()) {
+          rule.modifications.cookies = JSON.parse(modifyCookiesEl.value);
+        }
+        const deleteCookiesEl = document.getElementById('deleteCookies');
+        if (deleteCookiesEl && deleteCookiesEl.value.trim()) {
+          rule.modifications.deleteCookies = deleteCookiesEl.value.split(',').map(c => c.trim()).filter(c => c);
+        }
 
         // Parse variables if provided
         if (this.modifyVariables.value.trim()) {
@@ -1250,21 +1703,29 @@ class GraphQLTestingPanel {
 
         // Add operation name if provided
         if (this.modifyOperationName.value.trim()) {
-          rule.modifications.operationName =
-            this.modifyOperationName.value.trim();
+          rule.modifications.operationName = this.modifyOperationName.value.trim();
         }
 
         // Ensure at least one modification is specified
         if (Object.keys(rule.modifications).length === 0) {
-          alert(
-            "Please specify at least one modification (variables, query, or operation name)"
-          );
+          alert("Please specify at least one modification");
           return;
         }
       } catch (error) {
-        alert("Invalid JSON in modify variables: " + error.message);
+        alert("Invalid JSON in modification fields: " + error.message);
         return;
       }
+    } else if (rule.action === "redirect") {
+      const redirectUrlEl = document.getElementById('redirectUrl');
+      const preservePathEl = document.getElementById('redirectPreservePath');
+      
+      if (!redirectUrlEl || !redirectUrlEl.value.trim()) {
+        alert("Please specify a redirect URL");
+        return;
+      }
+      
+      rule.redirectUrl = redirectUrlEl.value.trim();
+      rule.redirectPreservePath = preservePathEl ? preservePathEl.checked : false;
     }
 
     try {
@@ -1520,14 +1981,80 @@ class GraphQLTestingPanel {
     // Pre-fill the rule editor with request data
     this.showRuleEditor();
 
-    // Set default values based on request
-    this.ruleName.value = `Rule for ${request.operationName || "Unnamed"}`;
-    this.ruleOperationName.value = request.operationName || "";
-    this.ruleUrlPattern.value = this.extractDomainFromUrl(request.url) || "";
+    const requestType = request.requestType || 'graphql';
+    const requestTypeSelect = document.getElementById('ruleRequestType');
+    
+    // Set request type
+    if (requestTypeSelect) {
+      requestTypeSelect.value = requestType;
+      // Trigger change event to show correct fields
+      if (window.panelExtensions) {
+        window.panelExtensions.toggleRuleTypeFields(requestType);
+      }
+    }
+
+    // Set common fields
+    this.ruleName.value = `Rule for ${request.operationName || this.getEndpointName(request.url) || "Request"}`;
     this.ruleAction.value = "delay";
     this.delayMs.value = "2000";
+    
+    // Set domain pattern for all request types
+    this.ruleUrlPattern.value = this.extractDomainFromUrl(request.url) || "";
+
+    if (requestType === 'graphql') {
+      // GraphQL-specific fields
+      this.ruleOperationName.value = request.operationName || "";
+      const graphqlEndpoint = document.getElementById('ruleGraphqlEndpoint');
+      if (graphqlEndpoint) {
+        graphqlEndpoint.value = this.extractPathFromUrl(request.url) || "";
+      }
+    } else {
+      // REST-specific fields
+      const httpMethod = document.getElementById('ruleHttpMethod');
+      const restPath = document.getElementById('ruleRestPath');
+      const restEndpoint = document.getElementById('ruleRestEndpoint');
+      const queryFilter = document.getElementById('ruleQueryFilter');
+      
+      if (httpMethod) {
+        httpMethod.value = request.method || 'GET';
+      }
+      if (restPath) {
+        restPath.value = this.extractPathFromUrl(request.url) || "";
+      }
+      if (restEndpoint) {
+        restEndpoint.value = this.getEndpointName(request.url) || "";
+      }
+      // Pre-fill query params from the URL
+      if (queryFilter) {
+        const queryParams = this.extractQueryParamsFromUrl(request.url);
+        if (Object.keys(queryParams).length > 0) {
+          queryFilter.value = JSON.stringify(queryParams, null, 2);
+        } else {
+          queryFilter.value = "";
+        }
+      }
+    }
 
     this.updateActionFields();
+  }
+
+  extractPathFromUrl(url) {
+    try {
+      const urlObj = new URL(url);
+      return urlObj.pathname;
+    } catch (e) {
+      return "";
+    }
+  }
+
+  getEndpointName(url) {
+    try {
+      const urlObj = new URL(url);
+      const segments = urlObj.pathname.split('/').filter(s => s);
+      return segments.length > 0 ? segments[segments.length - 1].split('?')[0] : "";
+    } catch (e) {
+      return "";
+    }
   }
 
   extractDomainFromUrl(url) {
@@ -1538,6 +2065,19 @@ class GraphQLTestingPanel {
       // Fallback to simple string extraction
       const match = url.match(/https?:\/\/([^\/]+)/);
       return match ? match[1] : "";
+    }
+  }
+
+  extractQueryParamsFromUrl(url) {
+    try {
+      const urlObj = new URL(url);
+      const params = {};
+      urlObj.searchParams.forEach((value, key) => {
+        params[key] = value;
+      });
+      return params;
+    } catch (e) {
+      return {};
     }
   }
 
@@ -1577,21 +2117,35 @@ class GraphQLTestingPanel {
 
     const logProfile = selectedProfile.value;
     const theme = selectedTheme.value;
+    
+    // Get monitoring settings
+    const pendingTimeoutInput = document.getElementById('pendingRequestTimeout');
+    const autoGroupCheckbox = document.getElementById('autoGroupByNavigation');
+    const pendingRequestTimeout = pendingTimeoutInput ? parseInt(pendingTimeoutInput.value, 10) * 1000 : 30000;
+    const autoGroupByNavigation = autoGroupCheckbox ? autoGroupCheckbox.checked : true;
+    
+    // Apply monitoring settings locally
+    this.pendingRequestTimeout = pendingRequestTimeout;
+    this.autoGroupByNavigation = autoGroupByNavigation;
 
     try {
       const response = await this.sendMessage({
         type: "UPDATE_SETTINGS",
-        settings: { logProfile, theme },
+        settings: { logProfile, theme, pendingRequestTimeout, autoGroupByNavigation },
       });
 
       if (response && response.success) {
         console.log(
-          `Settings saved: Log profile set to ${logProfile}, Theme set to ${theme}`
+          `Settings saved: Log profile set to ${logProfile}, Theme set to ${theme}, Pending timeout: ${pendingRequestTimeout}ms`
         );
 
         // Apply theme immediately
         this.applyTheme(theme);
         localStorage.setItem("graphql-toolkit-theme", theme);
+        
+        // Save monitoring settings to localStorage
+        localStorage.setItem("apilot-pending-timeout", pendingRequestTimeout.toString());
+        localStorage.setItem("apilot-auto-group", autoGroupByNavigation.toString());
 
         // Show success feedback
         this.showSettingsFeedback("Settings saved successfully!", "success");
@@ -1647,6 +2201,27 @@ class GraphQLTestingPanel {
         // Theme is handled separately by initializeTheme() since it uses localStorage
         // This allows theme to persist even if the extension's settings are reset
       }
+      
+      // Load monitoring settings from localStorage
+      const savedTimeout = localStorage.getItem("apilot-pending-timeout");
+      const savedAutoGroup = localStorage.getItem("apilot-auto-group");
+      
+      if (savedTimeout) {
+        this.pendingRequestTimeout = parseInt(savedTimeout, 10);
+        const timeoutInput = document.getElementById('pendingRequestTimeout');
+        if (timeoutInput) {
+          timeoutInput.value = Math.round(this.pendingRequestTimeout / 1000);
+        }
+      }
+      
+      if (savedAutoGroup !== null) {
+        this.autoGroupByNavigation = savedAutoGroup === 'true';
+        const autoGroupCheckbox = document.getElementById('autoGroupByNavigation');
+        if (autoGroupCheckbox) {
+          autoGroupCheckbox.checked = this.autoGroupByNavigation;
+        }
+      }
+      
     } catch (error) {
       console.error("Failed to load settings:", error);
     }
@@ -1923,6 +2498,157 @@ class GraphQLTestingPanel {
         // Add pulsing animation class
         timingElement.classList.add("live-timing");
       }
+    }
+  }
+
+  // Group requests by page navigation
+  groupRequestsBySession(requests) {
+    if (requests.length === 0) return [];
+    
+    // If we have page groups, use them with the stored _groupId for accurate grouping
+    if (this.pageGroups && this.pageGroups.length > 0) {
+      const groups = [];
+      
+      for (const pageGroup of this.pageGroups) {
+        // Find requests that belong to this page group by _groupId (most accurate)
+        // Falls back to timestamp-based matching for older requests
+        const groupRequests = requests.filter(req => {
+          // Use stored group ID if available (preferred)
+          if (req._groupId) {
+            return req._groupId === pageGroup.id;
+          }
+          // Fallback: timestamp-based matching for legacy requests
+          const reqTime = new Date(req.timestamp).getTime();
+          const groupStartTime = new Date(pageGroup.startTime).getTime();
+          const groupIndex = this.pageGroups.indexOf(pageGroup);
+          const nextGroup = this.pageGroups[groupIndex + 1];
+          const nextGroupStartTime = nextGroup ? new Date(nextGroup.startTime).getTime() : Infinity;
+          return reqTime >= groupStartTime && reqTime < nextGroupStartTime;
+        });
+        
+        if (groupRequests.length > 0) {
+          groups.push({
+            id: pageGroup.id,
+            name: pageGroup.name,
+            url: pageGroup.url,
+            startTime: pageGroup.startTime,
+            requests: groupRequests,
+            isIframe: pageGroup.isIframe
+          });
+        }
+      }
+      
+      // If there are requests not in any group, add them to a default group
+      const groupedRequestIds = new Set(groups.flatMap(g => g.requests.map(r => r.id)));
+      const ungroupedRequests = requests.filter(r => !groupedRequestIds.has(r.id));
+      
+      if (ungroupedRequests.length > 0) {
+        groups.push({
+          id: 'ungrouped_' + Date.now(),
+          name: 'Other Requests',
+          url: '',
+          startTime: ungroupedRequests[0].timestamp,
+          requests: ungroupedRequests
+        });
+      }
+      
+      return groups.filter(g => g.requests.length > 0);
+    }
+    
+    // Fallback: group by time gaps if no page groups
+    const SESSION_GAP_MS = 5000; // 5 seconds gap indicates new session
+    const groups = [];
+    let currentGroup = {
+      id: 'session_' + Date.now(),
+      name: 'Session 1',
+      startTime: requests[0].timestamp,
+      requests: [requests[0]]
+    };
+    
+    for (let i = 1; i < requests.length; i++) {
+      const prevTime = new Date(requests[i - 1].timestamp).getTime();
+      const currTime = new Date(requests[i].timestamp).getTime();
+      const gap = currTime - prevTime;
+      
+      if (gap > SESSION_GAP_MS) {
+        // Start new group
+        groups.push(currentGroup);
+        currentGroup = {
+          id: 'session_' + Date.now() + '_' + i,
+          name: `Session ${groups.length + 2}`,
+          startTime: requests[i].timestamp,
+          requests: [requests[i]]
+        };
+      } else {
+        currentGroup.requests.push(requests[i]);
+      }
+    }
+    
+    // Add the last group
+    groups.push(currentGroup);
+    
+    return groups;
+  }
+
+  // Get display name for operation based on request type
+  getOperationDisplayName(request) {
+    const requestType = request.requestType || 'graphql';
+    
+    if (requestType === 'graphql') {
+      // For GraphQL, use operationName or extract from query
+      if (request.operationName && request.operationName !== 'UnnamedQuery') {
+        return request.operationName;
+      }
+      // Try to extract a meaningful name from the query
+      if (request.query) {
+        const match = request.query.match(/(?:query|mutation|subscription)\s+(\w+)/i);
+        if (match) return match[1];
+        // Get first field name
+        const fieldMatch = request.query.match(/{\s*(\w+)/);
+        if (fieldMatch) return `GraphQL ${fieldMatch[1]}`;
+      }
+      return 'GraphQL Query';
+    } else {
+      // For REST, use the generated operationName or construct from method + endpoint
+      if (request.operationName) {
+        return request.operationName;
+      }
+      const method = request.method || 'GET';
+      const path = request.path || request.url;
+      // Extract meaningful part from path
+      if (path) {
+        const parts = path.split('/').filter(p => p && !p.startsWith('?'));
+        const meaningfulParts = parts.filter(part => {
+          if (/^\d+$/.test(part)) return false;
+          if (/^[0-9a-f]{8}-[0-9a-f]{4}/.test(part)) return false;
+          if (/^v\d+$/i.test(part)) return false;
+          if (part.toLowerCase() === 'api') return false;
+          return true;
+        });
+        if (meaningfulParts.length > 0) {
+          const resource = meaningfulParts[meaningfulParts.length - 1];
+          const titleCase = resource.charAt(0).toUpperCase() + resource.slice(1).toLowerCase();
+          return `${method} ${titleCase}`;
+        }
+      }
+      return `${method} Request`;
+    }
+  }
+
+  // Truncate URL for display
+  truncateUrl(url, maxLength = 50) {
+    if (!url || url.length <= maxLength) return url;
+    try {
+      const urlObj = new URL(url);
+      const path = urlObj.pathname + urlObj.search;
+      if (path.length <= maxLength) {
+        return urlObj.hostname + path;
+      }
+      // Truncate path with ellipsis
+      return urlObj.hostname + path.substring(0, maxLength - urlObj.hostname.length - 3) + '...';
+    } catch (e) {
+      // Not a valid URL, just truncate
+      return url.substring(0, maxLength - 3) + '...';
     }
   }
 
@@ -2217,7 +2943,14 @@ class GraphQLTestingPanel {
       .slice(0, 5); // Limit to 5 most recent endpoints
 
     if (endpoints.length > 0) {
+      // Show detected endpoints, hide manual input
       this.detectedEndpoints.style.display = "block";
+      this.manualEndpoint.style.display = "none";
+      
+      // Show back button if user wants to switch to manual
+      if (this.backToDetectedBtn) {
+        this.backToDetectedBtn.style.display = "none";
+      }
 
       // Clear existing options except the first one
       this.endpointSelect.innerHTML =
@@ -2230,6 +2963,41 @@ class GraphQLTestingPanel {
         option.dataset.headers = JSON.stringify(info.headers);
         this.endpointSelect.appendChild(option);
       });
+      
+      // Auto-select if only one endpoint
+      if (endpoints.length === 1) {
+        this.endpointSelect.selectedIndex = 1;
+        this.selectDetectedEndpoint();
+      }
+    } else {
+      // No endpoints detected, show manual input
+      this.detectedEndpoints.style.display = "none";
+      this.manualEndpoint.style.display = "flex";
+    }
+  }
+  
+  showManualEndpointInput() {
+    // Hide detected endpoints, show manual input
+    this.detectedEndpoints.style.display = "none";
+    this.manualEndpoint.style.display = "flex";
+    
+    // Show back button to return to detected endpoints
+    if (this.backToDetectedBtn && this.endpointSelect.options.length > 1) {
+      this.backToDetectedBtn.style.display = "inline-flex";
+    }
+    
+    // Focus on input
+    this.schemaEndpoint.focus();
+  }
+  
+  showDetectedEndpoints() {
+    // Show detected endpoints, hide manual input
+    this.detectedEndpoints.style.display = "block";
+    this.manualEndpoint.style.display = "none";
+    
+    // Hide back button
+    if (this.backToDetectedBtn) {
+      this.backToDetectedBtn.style.display = "none";
     }
   }
 
@@ -2237,10 +3005,6 @@ class GraphQLTestingPanel {
     const selectedOption = this.endpointSelect.selectedOptions[0];
     if (selectedOption && selectedOption.value) {
       this.schemaEndpoint.value = selectedOption.value;
-
-      // Hide manual input, show clear button
-      this.manualEndpoint.style.display = "none";
-      this.clearEndpointBtn.style.display = "inline-flex";
 
       // Auto-populate headers and auth if available
       try {
@@ -2674,12 +3438,8 @@ class GraphQLTestingPanel {
     this.endpointSelect.value = "";
     this.schemaEndpoint.value = "";
 
-    // Show manual input, hide clear button
-    this.manualEndpoint.style.display = "flex";
-    this.clearEndpointBtn.style.display = "none";
-
-    // Focus on manual input
-    this.schemaEndpoint.focus();
+    // Show manual input
+    this.showManualEndpointInput();
   }
 
   parseSchema() {

@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>GraphQL Testing Toolkit</title>
+    <title>APIlot</title>
     <link rel="stylesheet" href="popup.css">
 </head>
 <body>
@@ -11,10 +11,11 @@
         <!-- Header -->
         <div class="popup-header">
             <div class="logo-section">
-                <img src="../../assets/icons/icon-48.png" alt="GraphQL Testing Toolkit" class="logo">
+                <img src="../../assets/icons/icon-48.png" alt="APIlot" class="logo">
                 <div class="title-section">
-                    <h1>GraphQL Testing Toolkit</h1>
-                    <p class="version">v1.0.0</p>
+                    <h1>APIlot</h1>
+                    <p class="tagline">Your AI Copilot for API Testing</p>
+                    <p class="version">v2.0.0</p>
                 </div>
             </div>
         </div>
@@ -35,7 +36,7 @@
                     <span class="info-value" id="tabUrl">Loading...</span>
                 </div>
                 <div class="info-item">
-                    <span class="info-label">GraphQL Requests:</span>
+                    <span class="info-label">API Requests:</span>
                     <span class="info-value" id="requestCount">0</span>
                 </div>
                 <div class="info-item">
@@ -49,8 +50,8 @@
         <div class="actions-section">
             <div class="toggle-section">
                 <div class="toggle-info">
-                    <span class="toggle-label">GraphQL Monitoring</span>
-                    <span class="toggle-description" id="toggleDescription">Enable to start monitoring GraphQL requests</span>
+                    <span class="toggle-label">API Monitoring</span>
+                    <span class="toggle-description" id="toggleDescription">Enable to start monitoring GraphQL & REST requests</span>
                 </div>
                 <label class="toggle-switch">
                     <input type="checkbox" id="monitoringToggle">
@@ -64,7 +65,7 @@
                         <circle cx="12" cy="12" r="10"/>
                         <path d="m9 12 2 2 4-4"/>
                     </svg>
-                    <span>Monitoring enabled! Open DevTools (F12) and navigate to the "GraphQL Testing Toolkit" tab to start using the extension.</span>
+                    <span>Monitoring enabled! Open DevTools (F12) and navigate to the "APIlot" tab to start using the extension.</span>
                 </div>
             </div>
             
@@ -86,7 +87,7 @@
                         <path d="M9 12l2 2 4-4"/>
                         <circle cx="12" cy="12" r="10"/>
                     </svg>
-                    <span>Monitor GraphQL Requests</span>
+                    <span>Monitor GraphQL & REST APIs</span>
                 </div>
                 <div class="feature-item">
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -94,14 +95,14 @@
                         <path d="M2 17l10 5 10-5"/>
                         <path d="M2 12l10 5 10-5"/>
                     </svg>
-                    <span>Mock Responses</span>
+                    <span>AI-Powered Mock Generation</span>
                 </div>
                 <div class="feature-item">
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                         <circle cx="12" cy="12" r="3"/>
                         <path d="M12 1v6m0 6v6m11-7h-6m-6 0H1"/>
                     </svg>
-                    <span>Add Request Delays</span>
+                    <span>Performance Analytics</span>
                 </div>
                 <div class="feature-item">
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -111,7 +112,7 @@
                         <line x1="16" y1="17" x2="8" y2="17"/>
                         <polyline points="10,9 9,9 8,9"/>
                     </svg>
-                    <span>Export Request Logs</span>
+                    <span>Time-Travel Debugging</span>
                 </div>
             </div>
         </div>

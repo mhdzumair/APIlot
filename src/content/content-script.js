@@ -1,5 +1,5 @@
-// Content script for GraphQL Testing Toolkit
-class GraphQLInterceptor {
+// Content script for APIlot - Supports both GraphQL and REST APIs
+class APIInterceptor {
   constructor() {
     this.isMonitoring = false;
     this.setupMessageListener();
@@ -13,11 +13,11 @@ class GraphQLInterceptor {
       if (message.type === 'PING') {
         sendResponse({ success: true, message: 'Content script active' });
       } else if (message.type === 'START_MONITORING') {
-        console.log('🟢 [CONTENT] Starting GraphQL monitoring');
+        console.log('🟢 [CONTENT] Starting API monitoring');
         this.startMonitoring();
         sendResponse({ success: true });
       } else if (message.type === 'STOP_MONITORING') {
-        console.log('🔴 [CONTENT] Stopping GraphQL monitoring');
+        console.log('🔴 [CONTENT] Stopping API monitoring');
         this.stopMonitoring();
         sendResponse({ success: true });
       }
@@ -46,9 +46,9 @@ class GraphQLInterceptor {
     if (!this.isMonitoring) {
       this.isMonitoring = true;
       this.injectInterceptor();
-      console.log('✅ [CONTENT] GraphQL monitoring started');
+      console.log('✅ [CONTENT] API monitoring started');
     } else {
-      console.log('ℹ️ [CONTENT] GraphQL monitoring already active, skipping start');
+      console.log('ℹ️ [CONTENT] API monitoring already active, skipping start');
     }
   }
   
@@ -57,9 +57,9 @@ class GraphQLInterceptor {
       this.isMonitoring = false;
       // Send message to injected script to stop monitoring
       window.postMessage({
-        type: 'STOP_GRAPHQL_MONITORING'
+        type: 'STOP_API_MONITORING'
       }, '*');
-      console.log('⏹️ [CONTENT] GraphQL monitoring stopped');
+      console.log('⏹️ [CONTENT] API monitoring stopped');
     }
   }
   
@@ -69,7 +69,7 @@ class GraphQLInterceptor {
     const runtime = chrome.runtime || browser.runtime;
     script.src = runtime.getURL('src/content/injected-script.js');
     script.onload = () => script.remove();
-    script.onerror = () => console.error('Failed to inject GraphQL interceptor script');
+    script.onerror = () => console.error('Failed to inject API interceptor script');
     (document.head || document.documentElement).appendChild(script);
     
     // Listen for messages from injected script
@@ -77,21 +77,36 @@ class GraphQLInterceptor {
       if (event.source !== window || !event.data.type) return;
       
       switch (event.data.type) {
+        // New unified API messages
+        case 'API_REQUEST_DETECTED':
+          await this.handleAPIRequest(event.data.payload);
+          break;
+          
+        case 'API_RESPONSE_CAPTURED':
+          await this.handleAPIResponse(event.data.payload);
+          break;
+          
+        // Legacy GraphQL-specific messages (for backward compatibility)
         case 'GRAPHQL_REQUEST_DETECTED':
-          await this.handleGraphQLRequest(event.data.payload);
+          // Convert to unified format
+          event.data.payload.requestType = 'graphql';
+          await this.handleAPIRequest(event.data.payload);
           break;
           
         case 'GRAPHQL_RESPONSE_CAPTURED':
-          await this.handleGraphQLResponse(event.data.payload);
+          event.data.payload.requestType = 'graphql';
+          await this.handleAPIResponse(event.data.payload);
           break;
       }
     });
   }
   
-  async handleGraphQLRequest(payload) {
-    console.log(`🔍 [CONTENT] Handling GraphQL request:`, {
+  async handleAPIRequest(payload) {
+    const requestType = payload.requestType || 'graphql';
+    console.log(`🔍 [CONTENT] Handling ${requestType.toUpperCase()} request:`, {
       requestId: payload.requestId,
       operationName: payload.operationName,
+      method: payload.method,
       url: payload.url
     });
     
@@ -109,7 +124,7 @@ class GraphQLInterceptor {
       if (!enabledResponse.enabled) {
         console.log('🚫 [CONTENT] Extension disabled - skipping request processing');
         window.postMessage({
-          type: 'GRAPHQL_REQUEST_PROCEED',
+          type: 'API_REQUEST_PROCEED',
           payload: {
             requestId: payload.requestId
           }
@@ -118,19 +133,29 @@ class GraphQLInterceptor {
       }
       
       // Log the request only if enabled
-      console.log(`📝 [CONTENT] Logging request to background:`, {
+      console.log(`📝 [CONTENT] Logging ${requestType} request to background:`, {
         requestId: payload.requestId,
         hasHeaders: !!payload.requestHeaders,
         headerCount: payload.requestHeaders ? Object.keys(payload.requestHeaders).length : 0
       });
+      
       const logResponse = await runtime.sendMessage({
         type: 'LOG_REQUEST',
         data: {
           requestId: payload.requestId,
+          requestType: requestType,
           url: payload.url,
+          // GraphQL specific
           operationName: payload.operationName,
           query: payload.query,
           variables: payload.variables,
+          // REST specific
+          method: payload.method,
+          endpoint: payload.endpoint,
+          path: payload.path,
+          queryParams: payload.queryParams,
+          body: payload.body,
+          // Common
           requestHeaders: payload.requestHeaders,
           timestamp: payload.timestamp,
           tabId: payload.tabId
@@ -143,11 +168,21 @@ class GraphQLInterceptor {
       const response = await runtime.sendMessage({
         type: 'GET_MATCHING_RULE',
         data: {
-          graphqlData: {
+          requestType: requestType,
+          // GraphQL data
+          graphqlData: requestType === 'graphql' ? {
             operationName: payload.operationName,
             query: payload.query,
             variables: payload.variables
-          },
+          } : null,
+          // REST data
+          restData: requestType === 'rest' ? {
+            method: payload.method,
+            endpoint: payload.endpoint,
+            path: payload.path,
+            queryParams: payload.queryParams,
+            body: payload.body
+          } : null,
           url: payload.url
         }
       });
@@ -160,12 +195,12 @@ class GraphQLInterceptor {
                            (response.rule ? [response.rule] : []);
         
         if (rulesToApply.length > 0) {
-          console.log(`🎯 [CONTENT] Found ${rulesToApply.length} matching rule(s) for ${payload.operationName}:`, 
+          console.log(`🎯 [CONTENT] Found ${rulesToApply.length} matching rule(s) for ${payload.operationName || payload.endpoint}:`, 
                      rulesToApply.map(r => `${r.name} (${r.action})`).join(', '));
           
-          // Always use the multi-rule handler for consistency
+          // Use the unified multi-rule handler
           window.postMessage({
-            type: 'APPLY_GRAPHQL_RULES',
+            type: 'APPLY_API_RULES',
             payload: {
               requestId: payload.requestId,
               rules: rulesToApply
@@ -175,7 +210,7 @@ class GraphQLInterceptor {
           // No rules apply, proceed normally
           console.log(`➡️ [CONTENT] No rules apply, proceeding normally`);
           window.postMessage({
-            type: 'GRAPHQL_REQUEST_PROCEED',
+            type: 'API_REQUEST_PROCEED',
             payload: {
               requestId: payload.requestId
             }
@@ -185,7 +220,7 @@ class GraphQLInterceptor {
         // Extension disabled, proceed normally
         console.log(`➡️ [CONTENT] Extension disabled, proceeding normally`);
         window.postMessage({
-          type: 'GRAPHQL_REQUEST_PROCEED',
+          type: 'API_REQUEST_PROCEED',
           payload: {
             requestId: payload.requestId
           }
@@ -193,10 +228,10 @@ class GraphQLInterceptor {
       }
       
     } catch (error) {
-      console.error('Error handling GraphQL request:', error);
+      console.error('Error handling API request:', error);
       // Let request proceed on error
       window.postMessage({
-        type: 'GRAPHQL_REQUEST_PROCEED',
+        type: 'API_REQUEST_PROCEED',
         payload: {
           requestId: payload.requestId
         }
@@ -204,8 +239,9 @@ class GraphQLInterceptor {
     }
   }
   
-  async handleGraphQLResponse(payload) {
-    console.log('📥 [CONTENT] Received response from injected script:', {
+  async handleAPIResponse(payload) {
+    const requestType = payload.requestType || 'graphql';
+    console.log(`📥 [CONTENT] Received ${requestType} response from injected script:`, {
       requestId: payload.requestId,
       status: payload.status,
       hasResponse: !!payload.response,
@@ -221,6 +257,7 @@ class GraphQLInterceptor {
         type: 'LOG_RESPONSE',
         data: {
           requestId: payload.requestId,
+          requestType: requestType,
           response: payload.response,
           status: payload.status,
           statusText: payload.statusText,
@@ -235,7 +272,7 @@ class GraphQLInterceptor {
         success: logResponse?.success
       });
     } catch (error) {
-      console.error('❌ [CONTENT] Error handling GraphQL response:', error);
+      console.error('❌ [CONTENT] Error handling API response:', error);
     }
   }
 }
@@ -243,10 +280,10 @@ class GraphQLInterceptor {
 // Initialize interceptor when DOM is ready
 if (document.readyState === 'loading') {
   document.addEventListener('DOMContentLoaded', () => {
-    new GraphQLInterceptor();
+    new APIInterceptor();
   });
 } else {
-  new GraphQLInterceptor();
+  new APIInterceptor();
 }
 
-console.log('GraphQL Testing Toolkit content script loaded');
+console.log('APIlot content script loaded');

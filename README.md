@@ -1,14 +1,22 @@
-# GraphQL Testing Toolkit
+# APIlot
 
-A professional browser extension for GraphQL development, testing, and debugging. Seamlessly integrated into browser DevTools with comprehensive GraphQL tooling.
+**Your AI Copilot for API Testing**
+
+A powerful browser extension for GraphQL and REST API development, testing, and debugging. Seamlessly integrated into browser DevTools with AI-powered mock generation, performance analytics, and time-travel debugging.
 
 ## 🚀 Key Features
 
 ### 📊 **Request Monitoring**
-- Automatic GraphQL request detection and logging
+- Automatic detection of both GraphQL and REST API requests
 - Real-time monitoring with detailed request/response data
 - Advanced in-code search (Ctrl/Cmd+F) within code blocks
-- Request filtering and history management
+- Request filtering by type (GraphQL/REST), status, and search terms
+
+### 🤖 **AI-Powered Mock Generation**
+- Generate realistic mock data using AI (OpenAI GPT-4 / Anthropic Claude)
+- Intelligent field-type recognition for contextual data
+- One-click mock generation from GraphQL schema
+- Support for complex nested objects and arrays
 
 ### 🗂️ **Schema Explorer**
 - Auto-detects GraphQL endpoints and authentication from network traffic
@@ -25,11 +33,25 @@ A professional browser extension for GraphQL development, testing, and debugging
 - Seamless switch between visual builder and code editor
 
 ### ⚙️ **Smart Rule Engine**
-- Create rules to modify GraphQL requests in real-time
+- Create rules to modify both GraphQL and REST requests in real-time
 - Simulate network conditions (delays, failures, slow responses)
 - Mock custom responses for testing edge cases
-- Modify variables and headers dynamically
-- Environment-specific rules (dev/staging/prod)
+- Modify variables, headers, and status codes dynamically
+- Support for URL pattern matching with wildcards
+
+### 📈 **Performance Analytics**
+- Real-time dashboard with response time metrics
+- Track average response time, success rate, and request count
+- Visual charts for response time trends
+- Top 5 slowest requests identification
+- AI-powered performance recommendations
+
+### ⏱️ **Time-Travel Debugging**
+- Record complete API request/response sequences
+- Replay sessions with adjustable playback speed
+- Edit responses mid-replay for debugging
+- Export/import sessions for team sharing
+- Visual timeline with request details
 
 ### 💾 **Developer Tools**
 - Export/import rule configurations for team sharing
@@ -40,31 +62,40 @@ A professional browser extension for GraphQL development, testing, and debugging
 ## 📦 Installation
 
 ### Chrome Web Store
-*Coming Soon - Pending Review*
+*Coming Soon*
 
 ### Firefox Add-ons
-*Coming Soon - In Development*
+*Coming Soon*
 
 ### From Source (Development)
 
 **Chrome:**
 1. Download and extract the source code
-2. Open `chrome://extensions/`
-3. Enable "Developer mode"
-4. Click "Load unpacked" and select the `dist/chrome` folder
+2. Run `npm run build:chrome`
+3. Open `chrome://extensions/`
+4. Enable "Developer mode"
+5. Click "Load unpacked" and select the `dist/chrome` folder
 
 **Firefox:**
 1. Download and extract the source code
-2. Open `about:debugging`
-3. Click "This Firefox" → "Load Temporary Add-on"
-4. Select `dist/firefox/manifest.json`
+2. Run `npm run build:firefox`
+3. Open `about:debugging`
+4. Click "This Firefox" → "Load Temporary Add-on"
+5. Select `dist/firefox/manifest.json`
 
 ## 🛠️ Quick Start
 
 1. **Install the extension** and open DevTools (F12)
-2. **Find the "GraphQL Testing" tab** in DevTools
+2. **Find the "APIlot" tab** in DevTools
 3. **Enable monitoring** using the toggle switch
-4. **Start making GraphQL requests** - they'll appear automatically
+4. **Start making API requests** - they'll appear automatically
+
+### AI Mock Generation Setup
+1. Go to **AI Settings** tab
+2. **Select your AI provider** (OpenAI or Anthropic)
+3. **Enter your API key**
+4. **Test the connection**
+5. Use **"AI Generate Mock"** buttons throughout the app
 
 ### Schema Explorer Setup
 1. Go to **Schema Explorer** tab
@@ -73,19 +104,20 @@ A professional browser extension for GraphQL development, testing, and debugging
 4. **Click "Load Schema"** to explore your GraphQL API
 5. **Generate and execute queries** with one click
 
-### Visual Query Builder
-1. **Load a schema** in Schema Explorer
-2. **Switch to Visual Builder** tab
-3. **Click the + button** next to operations to add them
-4. **Configure arguments** and **select response fields**
-5. **Execute queries** or copy generated GraphQL
-
 ### Rule Engine
 1. Go to **Rules** tab
 2. **Click "Add Rule"**
-3. **Configure pattern matching** (operation name, URL)
-4. **Set action** (delay, mock, modify, block)
-5. **Save and enable** the rule
+3. **Select request type** (GraphQL, REST, or Both)
+4. **Configure pattern matching** (operation name, URL, HTTP method)
+5. **Set action** (delay, mock, modify, block)
+6. **Save and enable** the rule
+
+### Time-Travel Debugging
+1. Go to **Time-Travel** tab
+2. **Click "Record"** to start capturing requests
+3. **Perform your workflow** in the application
+4. **Click "Stop"** when done
+5. **Replay, edit, and export** your session
 
 ## 📋 Use Cases
 
@@ -94,48 +126,53 @@ A professional browser extension for GraphQL development, testing, and debugging
 - **Error Handling**: Validate app behavior with failed requests
 - **Performance**: Simulate slow network conditions
 - **API Exploration**: Browse and test GraphQL schemas interactively
+- **Mock Data**: Generate realistic test data with AI
 
 ### For QA Engineers
 - **Regression Testing**: Apply consistent test scenarios
 - **Edge Cases**: Test with partial or missing data
 - **User Experience**: Validate loading states and error messages
 - **Cross-Environment**: Share test configurations across teams
+- **Session Recording**: Capture and replay complex workflows
 
 ## 🔧 Rule Examples
 
-### Delay Specific Operations
+### Delay Specific Operations (GraphQL)
 ```json
 {
   "name": "Slow Loading Test",
-  "matchType": "operationName",
-  "pattern": "GetUsers",
+  "requestType": "graphql",
+  "operationName": "GetUsers",
   "action": "delay",
   "delayMs": 3000
 }
 ```
 
-### Mock Empty Responses
+### Mock REST API Response
 ```json
 {
-  "name": "Empty Data Test",
-  "matchType": "operationName", 
-  "pattern": "GetStudentScores",
+  "name": "Mock User List",
+  "requestType": "rest",
+  "httpMethod": "GET",
+  "urlPattern": "/api/users",
   "action": "mock",
+  "statusCode": 200,
   "mockResponse": {
-    "data": { "GetStudentScores": [] }
+    "users": [{"id": 1, "name": "Test User"}]
   }
 }
 ```
 
-### Modify Request Variables
+### Simulate Server Error
 ```json
 {
-  "name": "Add Test Parameters",
-  "matchType": "operationName",
-  "pattern": "GetUsers", 
-  "action": "modify",
-  "modifications": {
-    "variables": { "limit": 5, "testMode": true }
+  "name": "Server Error Test",
+  "requestType": "rest",
+  "urlPattern": "/api/*",
+  "action": "mock",
+  "statusCode": 500,
+  "mockResponse": {
+    "error": "Internal Server Error"
   }
 }
 ```
@@ -144,9 +181,12 @@ A professional browser extension for GraphQL development, testing, and debugging
 
 - **Background Script**: Rule engine and request interception
 - **Content Script**: Bridge between page and extension
-- **Injected Script**: GraphQL request detection in page context
+- **Injected Script**: API request detection in page context
 - **DevTools Panel**: Main UI for all features
-- **Local Storage**: Rule and preference persistence
+- **AI Services**: Mock generation with multiple providers
+- **Performance Tracker**: Metrics collection and analysis
+- **Session Recorder**: Time-travel debugging engine
+- **Local Storage**: Rule, session, and preference persistence
 
 ## 🌐 Browser Support
 
@@ -157,50 +197,56 @@ A professional browser extension for GraphQL development, testing, and debugging
 ## 🔒 Privacy & Security
 
 - **Local Storage Only**: All data stays on your device
-- **No External Servers**: No data transmission to third parties
+- **No External Servers**: No data transmission to third parties (except AI providers when configured)
 - **DevTools Only**: Only active when DevTools are open
 - **CSP Compliant**: Follows browser security policies
 - **Bundled Libraries**: No remote code loading
+- **Secure API Key Storage**: API keys stored locally in browser storage
 
 ## 🐛 Troubleshooting
 
 **Extension not detecting requests?**
-- Ensure requests are POST with JSON bodies containing GraphQL fields
+- Ensure monitoring is enabled for the current tab
 - Refresh page after enabling extension
 - Check browser console for errors
 
 **Rules not applying?**
 - Verify rule is enabled (green indicator)
-- Check pattern matching (case-sensitive)
+- Check pattern matching (case-sensitive for GraphQL operations)
 - Ensure extension is globally enabled
 
+**AI mock generation not working?**
+- Verify API key is correct in AI Settings
+- Test connection using the "Test Connection" button
+- Check if you have API credits/quota available
+
 **DevTools tab missing?**
-- Look for "GraphQL Testing" alongside Console, Network tabs
+- Look for "APIlot" alongside Console, Network tabs
 - Try disabling/re-enabling extension
 - Restart browser if needed
 
 ## 📈 Roadmap
 
 ### ✅ Completed
-- [x] Advanced code search within blocks
-- [x] GraphQL schema exploration and introspection
-- [x] Visual query builder with click-to-add interface
-- [x] Smart authentication detection and management
-- [x] Select All/Deselect All for response fields
-- [x] Real-time query preview and execution
+- [x] GraphQL request monitoring and mocking
+- [x] REST API support
+- [x] AI-powered mock generation
+- [x] Performance analytics dashboard
+- [x] Time-travel debugging
+- [x] Visual query builder
+- [x] Schema explorer
 
 ### 🚧 In Progress
 - [ ] Chrome Web Store publication
 - [ ] Firefox Add-ons store publication
-- [ ] WebSocket GraphQL support
 
 ### 📋 Planned
 - [ ] GraphQL subscription testing
-- [ ] Performance metrics and timing analysis
-- [ ] Query history and favorites
-- [ ] Schema diff and versioning
+- [ ] WebSocket support
 - [ ] Team collaboration features
 - [ ] CI/CD integration hooks
+- [ ] Schema diff and versioning
+- [ ] Query history and favorites
 
 ## 🤝 Contributing
 
@@ -216,10 +262,10 @@ MIT License - See [LICENSE](LICENSE) file for details.
 
 ## 🆘 Support
 
-- **Issues**: [GitHub Issues](https://github.com/your-repo/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/your-repo/discussions)
+- **Issues**: [GitHub Issues](https://github.com/mhdzumair/apilot/issues)
+- **Discussions**: [GitHub Discussions](https://github.com/mhdzumair/apilot/discussions)
 - **Documentation**: This README and in-extension help
 
 ---
 
-**Built for developers, by developers. Enhance your GraphQL workflow today! 🚀**
+**APIlot - Your AI copilot for API testing. Navigate any API scenario with confidence! ✈️**

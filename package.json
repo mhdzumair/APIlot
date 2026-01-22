@@ -1,7 +1,7 @@
 {
-  "name": "graphql-testing-toolkit",
-  "version": "1.0.0",
-  "description": "Advanced GraphQL testing extension for developers and QA engineers",
+  "name": "apilot",
+  "version": "2.0.0",
+  "description": "Your AI copilot for API testing - supports GraphQL and REST with AI-powered mocking, time-travel debugging, and performance analytics",
   "main": "background.js",
   "scripts": {
     "dev": "./scripts/dev-firefox.sh",
@@ -11,10 +11,10 @@
     "build:firefox": "node build/build.js && echo 'Firefox build: dist/firefox/'",
     "build:chrome": "node build/build.js && echo 'Chrome build: dist/chrome/'",
     "package": "npm run build",
-    "package:firefox": "cd dist/firefox && zip -r ../graphql-testing-toolkit-firefox.zip .",
-    "package:chrome": "cd dist/chrome && zip -r ../graphql-testing-toolkit-chrome.zip .",
+    "package:firefox": "cd dist/firefox && zip -r ../apilot-firefox.zip .",
+    "package:chrome": "cd dist/chrome && zip -r ../apilot-chrome.zip .",
     "publish:firefox": "web-ext sign --source-dir=dist/firefox",
-    "publish:chrome": "echo 'Upload dist/graphql-testing-toolkit-chrome.zip to Chrome Web Store'",
+    "publish:chrome": "echo 'Upload dist/apilot-chrome.zip to Chrome Web Store'",
     "lint": "echo 'Add ESLint configuration if needed'",
     "test": "echo 'Add test suite if needed'",
     "clean": "rm -rf dist/ web-ext-artifacts/",
@@ -22,6 +22,10 @@
   },
   "keywords": [
     "graphql",
+    "rest-api",
+    "api-testing",
+    "ai-mock",
+    "copilot",
     "testing",
     "debugging",
     "firefox",
@@ -32,6 +36,8 @@
     "qa",
     "mocking",
     "monitoring",
+    "performance-analytics",
+    "time-travel-debugging",
     "manifest-v2",
     "manifest-v3"
   ],
@@ -39,12 +45,12 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/mhdzumair/graphql-testing-toolkit"
+    "url": "https://github.com/mhdzumair/apilot"
   },
   "bugs": {
-    "url": "https://github.com/mhdzumair/graphql-testing-toolkit/issues"
+    "url": "https://github.com/mhdzumair/apilot/issues"
   },
-  "homepage": "https://github.com/mhdzumair/graphql-testing-toolkit#readme",
+  "homepage": "https://github.com/mhdzumair/apilot#readme",
   "devDependencies": {
     "web-ext": "^7.0.0",
     "chrome-webstore-upload-cli": "^2.1.0"

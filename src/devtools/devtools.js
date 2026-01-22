@@ -1,7 +1,7 @@
-// DevTools integration for GraphQL Testing Toolkit
+// DevTools integration for APIlot
 
 try {
-  // Create the GraphQL panel with Firefox compatibility
+  // Create the APIlot panel with Firefox compatibility
   const devtools = chrome.devtools || browser.devtools;
 
   if (devtools && devtools.panels && devtools.panels.create) {
@@ -9,7 +9,7 @@ try {
     const panelPath = "/src/devtools/panel.html";
 
     const panelPromise = devtools.panels.create(
-      "GraphQL Toolkit",
+      "APIlot",
       "",
       panelPath
     );
@@ -19,11 +19,11 @@ try {
       // Promise style (modern browsers)
       panelPromise
         .then((panel) => {
-          console.log("GraphQL Toolkit panel created");
+          console.log("APIlot panel created");
           setupPanelEvents(panel);
         })
         .catch((error) => {
-          console.error("Failed to create GraphQL Toolkit panel:", error);
+          console.error("Failed to create APIlot panel:", error);
         });
     } else {
       // Callback style (older Firefox versions)
@@ -43,7 +43,7 @@ function setupPanelEvents(panel) {
     // Handle panel events
     if (panel.onShown && panel.onShown.addListener) {
       panel.onShown.addListener((panelWindow) => {
-        console.log("GraphQL Toolkit panel shown");
+        console.log("APIlot panel shown");
         if (panelWindow && typeof panelWindow.panelShown === "function") {
           panelWindow.panelShown();
         }
@@ -52,7 +52,7 @@ function setupPanelEvents(panel) {
 
     if (panel.onHidden && panel.onHidden.addListener) {
       panel.onHidden.addListener((panelWindow) => {
-        console.log("GraphQL Toolkit panel hidden");
+        console.log("APIlot panel hidden");
         if (panelWindow && typeof panelWindow.panelHidden === "function") {
           panelWindow.panelHidden();
         }

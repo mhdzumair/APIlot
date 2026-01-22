@@ -66,7 +66,7 @@ class PopupManager {
                 theme = response.settings.theme;
             } else {
                 // Fallback to localStorage (same as panel)
-                theme = localStorage.getItem('graphql-toolkit-theme') || 'system';
+                theme = localStorage.getItem('apilot-theme') || 'system';
             }
 
             console.log('🎨 [POPUP] Initializing theme:', theme);
@@ -345,7 +345,7 @@ class PopupManager {
                 newColor = 'var(--text-accent)';
             }
         } else {
-            newText = 'Enable to start monitoring GraphQL requests';
+            newText = 'Enable to start monitoring API requests';
             newColor = 'var(--text-secondary)';
         }
 
