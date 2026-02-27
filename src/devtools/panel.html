@@ -273,13 +273,21 @@
                           <div class="response-header">
                             <h4>Response</h4>
                             <div class="response-actions">
+                              <button id="builderSearchBtn" class="btn btn-secondary btn-sm" title="Search in response (Ctrl/Cmd+F)">
+                                <span class="btn-icon">🔍</span>
+                                Search
+                              </button>
+                              <button id="builderCopyBtn" class="btn btn-secondary btn-sm" title="Copy response">
+                                <span class="btn-icon">📋</span>
+                                Copy
+                              </button>
                               <button id="clearResponseBtn" class="btn btn-secondary btn-sm">
                                 <span class="btn-icon">🗑️</span>
                                 Clear
                               </button>
                             </div>
                           </div>
-                          <div class="response-content">
+                          <div class="response-content searchable-response" id="builderResponseWrapper" tabindex="0">
                             <pre id="builderResponseContent" class="response-code"></pre>
                           </div>
                         </div>
@@ -336,8 +344,14 @@
                     </div>
                     
                     <div class="response-section">
-                      <label>Response</label>
-                      <div id="queryResponse" class="response-container">
+                      <div class="response-header">
+                        <label>Response</label>
+                        <div class="response-actions">
+                          <button id="explorerSearchBtn" class="btn btn-sm" title="Search in response (Ctrl/Cmd+F)">🔍 Search</button>
+                          <button id="explorerCopyBtn" class="btn btn-sm" title="Copy response">📋 Copy</button>
+                        </div>
+                      </div>
+                      <div id="queryResponse" class="response-container searchable-response" tabindex="0">
                         <div class="no-response">Execute a query to see the response</div>
                       </div>
                     </div>

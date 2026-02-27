@@ -47,6 +47,10 @@ class GraphQLTestingPanel {
         searchTerm: "",
       };
 
+      // Expanded state tracking - preserves open request details across re-renders
+      this.expandedRequestIds = new Set(); // Set of request IDs with expanded details
+      this.expandedSections = new Map(); // Map of requestId -> Set of section types (e.g., "query", "response")
+
       // Visual Query Builder state
       this.builderState = {
         selectedFields: [],
@@ -194,6 +198,9 @@ class GraphQLTestingPanel {
     this.builderResponseContent = document.getElementById(
       "builderResponseContent"
     );
+    this.builderResponseWrapper = document.getElementById("builderResponseWrapper");
+    this.builderCopyBtn = document.getElementById("builderCopyBtn");
+    this.builderSearchBtn = document.getElementById("builderSearchBtn");
     this.clearResponseBtn = document.getElementById("clearResponseBtn");
     this.variablesEditor = document.getElementById("variablesEditor");
     this.headersEditor = document.getElementById("headersEditor");
@@ -201,6 +208,8 @@ class GraphQLTestingPanel {
     this.executeQueryBtn = document.getElementById("executeQueryBtn");
     this.schemaLoading = document.getElementById("schemaLoading");
     this.schemaError = document.getElementById("schemaError");
+    this.explorerCopyBtn = document.getElementById("explorerCopyBtn");
+    this.explorerSearchBtn = document.getElementById("explorerSearchBtn");
 
     // Search overlay elements
     this.codeSearchOverlay = document.getElementById("codeSearchOverlay");
@@ -299,6 +308,24 @@ class GraphQLTestingPanel {
     this.schemaSearch.addEventListener("input", () => this.filterSchema());
     this.executeQueryBtn.addEventListener("click", () => this.executeQuery());
     this.authType.addEventListener("change", () => this.updateAuthFields());
+    
+    // Explorer response copy and search buttons
+    if (this.explorerCopyBtn) {
+      this.explorerCopyBtn.addEventListener("click", () => this.copyExplorerResponse());
+    }
+    if (this.explorerSearchBtn) {
+      this.explorerSearchBtn.addEventListener("click", () => this.openExplorerSearch());
+    }
+    
+    // Make explorer response searchable with Ctrl/Cmd+F
+    if (this.queryResponse) {
+      this.queryResponse.addEventListener("keydown", (e) => {
+        if ((e.ctrlKey || e.metaKey) && e.key === "f") {
+          e.preventDefault();
+          this.openExplorerSearch();
+        }
+      });
+    }
 
     // Schema tab events
     this.schemaTabBtns.forEach((btn) => {
@@ -332,6 +359,24 @@ class GraphQLTestingPanel {
     this.clearResponseBtn.addEventListener("click", () =>
       this.clearBuilderResponse()
     );
+    
+    // Builder response copy and search buttons
+    if (this.builderCopyBtn) {
+      this.builderCopyBtn.addEventListener("click", () => this.copyBuilderResponse());
+    }
+    if (this.builderSearchBtn) {
+      this.builderSearchBtn.addEventListener("click", () => this.openBuilderSearch());
+    }
+    
+    // Make builder response searchable with Ctrl/Cmd+F
+    if (this.builderResponseWrapper) {
+      this.builderResponseWrapper.addEventListener("keydown", (e) => {
+        if ((e.ctrlKey || e.metaKey) && e.key === "f") {
+          e.preventDefault();
+          this.openBuilderSearch();
+        }
+      });
+    }
 
     // Search overlay events
     this.searchInput.addEventListener("input", () => this.performSearch());
@@ -644,6 +689,8 @@ class GraphQLTestingPanel {
   async clearLog() {
     this.requestLog = [];
     this.filteredRequestLog = []; // Also clear filtered log
+    this.expandedRequestIds.clear(); // Clear expanded state
+    this.expandedSections.clear(); // Clear expanded sections
 
     try {
       await this.sendMessage({
@@ -718,6 +765,12 @@ class GraphQLTestingPanel {
 
     // Keep log size manageable
     if (this.requestLog.length > 100) {
+      // Get IDs of requests being removed
+      const removedRequests = this.requestLog.slice(0, this.requestLog.length - 100);
+      removedRequests.forEach((req) => {
+        this.expandedRequestIds.delete(req.id);
+        this.expandedSections.delete(req.id);
+      });
       this.requestLog = this.requestLog.slice(-100);
     }
 
@@ -1239,6 +1292,42 @@ class GraphQLTestingPanel {
           this.toggleRequestGroup(groupIndex);
         });
       });
+    
+    // Restore expanded state after re-rendering
+    this.restoreExpandedState();
+  }
+
+  restoreExpandedState() {
+    // Restore expanded request details
+    this.expandedRequestIds.forEach((requestId) => {
+      const request = this.requestLog.find((r) => r.id === requestId);
+      if (request) {
+        const originalIndex = this.requestLog.indexOf(request);
+        const detailsElement = document.getElementById(`details-${originalIndex}`);
+        if (detailsElement) {
+          detailsElement.style.display = "block";
+        }
+        
+        // Restore expanded inner sections for this request
+        const expandedSectionTypes = this.expandedSections.get(requestId);
+        if (expandedSectionTypes) {
+          expandedSectionTypes.forEach((sectionType) => {
+            const sectionId = `${sectionType}-${originalIndex}`;
+            const codeBlock = document.getElementById(sectionId);
+            const header = document.querySelector(`[data-section="${sectionId}"]`);
+            if (codeBlock && header) {
+              codeBlock.classList.remove("collapsed");
+              codeBlock.classList.add("expanded");
+              header.classList.add("expanded");
+              const expandIndicator = header.querySelector(".expand-indicator");
+              if (expandIndicator) {
+                expandIndicator.textContent = "▼";
+              }
+            }
+          });
+        }
+      }
+    });
   }
 
   toggleRequestGroup(groupIndex) {
@@ -1942,6 +2031,18 @@ class GraphQLTestingPanel {
     if (detailsElement) {
       const isVisible = detailsElement.style.display !== "none";
       detailsElement.style.display = isVisible ? "none" : "block";
+      
+      // Track expanded state by request ID (not index) to survive re-renders
+      const request = this.requestLog[index];
+      if (request) {
+        if (isVisible) {
+          this.expandedRequestIds.delete(request.id);
+          // Also clear related section tracking when collapsing the request
+          this.expandedSections.delete(request.id);
+        } else {
+          this.expandedRequestIds.add(request.id);
+        }
+      }
     }
   }
 
@@ -1951,17 +2052,42 @@ class GraphQLTestingPanel {
 
     if (codeBlock && expandIndicator) {
       const isCollapsed = codeBlock.classList.contains("collapsed");
+      
+      // Extract section type and index from sectionId (e.g., "query-5" -> type="query", index=5)
+      const match = sectionId.match(/^(.+)-(\d+)$/);
+      const sectionType = match ? match[1] : null;
+      const requestIndex = match ? parseInt(match[2]) : null;
+      const request = requestIndex !== null ? this.requestLog[requestIndex] : null;
 
       if (isCollapsed) {
         codeBlock.classList.remove("collapsed");
         codeBlock.classList.add("expanded");
         headerElement.classList.add("expanded");
         expandIndicator.textContent = "▼";
+        
+        // Track expanded section state by request ID
+        if (request && sectionType) {
+          if (!this.expandedSections.has(request.id)) {
+            this.expandedSections.set(request.id, new Set());
+          }
+          this.expandedSections.get(request.id).add(sectionType);
+        }
       } else {
         codeBlock.classList.remove("expanded");
         codeBlock.classList.add("collapsed");
         headerElement.classList.remove("expanded");
         expandIndicator.textContent = "▶";
+        
+        // Track collapsed section state by request ID
+        if (request && sectionType) {
+          const sections = this.expandedSections.get(request.id);
+          if (sections) {
+            sections.delete(sectionType);
+            if (sections.size === 0) {
+              this.expandedSections.delete(request.id);
+            }
+          }
+        }
 
         // Close search overlay if this code block is being collapsed and is currently active
         if (
@@ -2724,7 +2850,11 @@ class GraphQLTestingPanel {
     this.searchState.matches = [];
     this.searchState.currentMatchIndex = -1;
 
-    const codeElement = this.searchState.currentCodeBlock.querySelector("code");
+    // Support both <code> and <pre> elements for search
+    let codeElement = this.searchState.currentCodeBlock.querySelector("code");
+    if (!codeElement) {
+      codeElement = this.searchState.currentCodeBlock.querySelector("pre");
+    }
     if (!codeElement) return;
 
     // Get the text content
@@ -6089,6 +6219,40 @@ ${fieldSuggestions}
     this.builderResponseContent.className = "response-code";
   }
 
+  copyBuilderResponse() {
+    const textContent = this.builderResponseContent.textContent;
+    if (!textContent || textContent === "Loading...") {
+      this.showCopyFeedback(this.builderCopyBtn, "No response", false);
+      return;
+    }
+    
+    navigator.clipboard.writeText(textContent).then(() => {
+      this.showCopyFeedback(this.builderCopyBtn, "Copied!", true);
+    }).catch((err) => {
+      console.error("Failed to copy:", err);
+      this.showCopyFeedback(this.builderCopyBtn, "Failed", false);
+    });
+  }
+
+  openBuilderSearch() {
+    const textContent = this.builderResponseContent.textContent;
+    if (!textContent || textContent === "Loading...") {
+      return;
+    }
+    
+    // Use the existing search overlay but with the builder response wrapper
+    this.searchState.isActive = true;
+    this.searchState.currentCodeBlock = this.builderResponseWrapper;
+    this.codeSearchOverlay.style.display = "block";
+    this.searchInput.focus();
+    
+    // Add search-active class
+    this.builderResponseWrapper.classList.add("search-active");
+    
+    // Clear previous search
+    this.clearSearchHighlights();
+  }
+
   generateBuilderVariables() {
     const variables = {};
 
@@ -6329,10 +6493,104 @@ ${fieldSuggestions}
           window.hljs.highlightElement(codeElement);
         }
       }
+      
+      // Add search hint to response container
+      this.addExplorerSearchHint();
     } catch (error) {
       console.error("Query execution failed:", error);
       this.queryResponse.innerHTML = `<div class="error">Error: ${error.message}</div>`;
     }
+  }
+  
+  addExplorerSearchHint() {
+    // Remove existing hint if any
+    const existingHint = this.queryResponse.querySelector(".search-hint");
+    if (existingHint) {
+      existingHint.remove();
+    }
+    
+    const searchHint = document.createElement("div");
+    searchHint.className = "search-hint";
+    searchHint.innerHTML = "<small>💡 Press Ctrl/Cmd+F or click Search to find in response</small>";
+    searchHint.style.cssText = `
+      position: absolute;
+      top: 8px;
+      right: 8px;
+      background: var(--bg-accent);
+      padding: 4px 8px;
+      border-radius: 4px;
+      font-size: 10px;
+      color: var(--text-secondary);
+      opacity: 0;
+      transition: opacity 0.2s;
+      pointer-events: none;
+      z-index: 10;
+    `;
+    
+    this.queryResponse.appendChild(searchHint);
+    
+    // Show hint on focus/hover
+    const showHint = () => (searchHint.style.opacity = "1");
+    const hideHint = () => (searchHint.style.opacity = "0");
+    
+    this.queryResponse.addEventListener("focus", showHint);
+    this.queryResponse.addEventListener("blur", hideHint);
+    this.queryResponse.addEventListener("mouseenter", showHint);
+    this.queryResponse.addEventListener("mouseleave", hideHint);
+  }
+
+  copyExplorerResponse() {
+    const codeElement = this.queryResponse.querySelector("code");
+    if (!codeElement) {
+      // No response to copy
+      const noResponse = this.queryResponse.querySelector(".no-response");
+      if (noResponse) {
+        this.showCopyFeedback(this.explorerCopyBtn, "No response to copy", false);
+        return;
+      }
+    }
+    
+    const textContent = codeElement ? codeElement.textContent : this.queryResponse.textContent;
+    
+    navigator.clipboard.writeText(textContent).then(() => {
+      this.showCopyFeedback(this.explorerCopyBtn, "Copied!", true);
+    }).catch((err) => {
+      console.error("Failed to copy:", err);
+      this.showCopyFeedback(this.explorerCopyBtn, "Failed to copy", false);
+    });
+  }
+
+  showCopyFeedback(button, message, success) {
+    const originalText = button.textContent;
+    button.textContent = message;
+    button.style.backgroundColor = success ? "var(--success-bg, #28a745)" : "var(--error-bg, #dc3545)";
+    button.style.color = "#fff";
+    
+    setTimeout(() => {
+      button.textContent = originalText;
+      button.style.backgroundColor = "";
+      button.style.color = "";
+    }, 1500);
+  }
+
+  openExplorerSearch() {
+    // Check if there's actual content to search
+    const codeElement = this.queryResponse.querySelector("code");
+    if (!codeElement) {
+      return;
+    }
+    
+    // Use the existing search overlay but with the explorer response container
+    this.searchState.isActive = true;
+    this.searchState.currentCodeBlock = this.queryResponse;
+    this.codeSearchOverlay.style.display = "block";
+    this.searchInput.focus();
+    
+    // Add search-active class
+    this.queryResponse.classList.add("search-active");
+    
+    // Clear previous search
+    this.clearSearchHighlights();
   }
 
   filterSchema() {
