@@ -148,13 +148,13 @@ function createPackages() {
   try {
     // Create Firefox package
     console.log('  📦 Creating Firefox package...');
-    execSync(`cd "${FIREFOX_DIR}" && zip -r "../graphql-testing-toolkit-firefox.zip" .`, { stdio: 'inherit' });
-    console.log('  ✅ Firefox package created: dist/graphql-testing-toolkit-firefox.zip');
+    execSync(`cd "${FIREFOX_DIR}" && zip -r "../apilot-firefox.zip" .`, { stdio: 'inherit' });
+    console.log('  ✅ Firefox package created: dist/apilot-firefox.zip');
 
     // Create Chrome package
     console.log('  📦 Creating Chrome package...');
-    execSync(`cd "${CHROME_DIR}" && zip -r "../graphql-testing-toolkit-chrome.zip" .`, { stdio: 'inherit' });
-    console.log('  ✅ Chrome package created: dist/graphql-testing-toolkit-chrome.zip');
+    execSync(`cd "${CHROME_DIR}" && zip -r "../apilot-chrome.zip" .`, { stdio: 'inherit' });
+    console.log('  ✅ Chrome package created: dist/apilot-chrome.zip');
 
   } catch (error) {
     console.error('❌ Failed to create packages:', error.message);
@@ -173,12 +173,12 @@ function generateBuildInfo() {
       firefox: {
         manifest: 'v2',
         background: 'persistent script',
-        package: 'graphql-testing-toolkit-firefox.zip'
+        package: 'apilot-firefox.zip'
       },
       chrome: {
         manifest: 'v3',
         background: 'service worker',
-        package: 'graphql-testing-toolkit-chrome.zip'
+        package: 'apilot-chrome.zip'
       }
     }
   };
