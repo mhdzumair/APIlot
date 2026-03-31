@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>APIlot DevTools</title>
+</head>
+<body>
+  <!--
+    Phase 0 devtools page: creates the legacy panel.
+    Plain (non-module) script so Vite leaves it as-is during bundling.
+    Phase 3 will replace this with a React-based entrypoint.
+  -->
+  <script>
+    try {
+      var api = (typeof browser !== 'undefined' && browser.devtools) ? browser : chrome;
+      api.devtools.panels.create('APIlot', '', '/src-legacy/devtools/panel.html');
+    } catch (e) {
+      console.warn('[APIlot] devtools panel registration failed:', e);
+    }
+  </script>
+</body>
+</html>

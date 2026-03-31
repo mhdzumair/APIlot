@@ -10,3 +10,9 @@ web-ext-artifacts/
 .DS_Store
 artifacts/
 dist/
+
+# WXT
+.output/
+.wxt/
+node_modules/
+package-lock.json

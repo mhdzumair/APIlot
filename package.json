@@ -2,44 +2,11 @@
   "name": "apilot",
   "version": "2.1.0",
   "description": "Your AI copilot for API testing - supports GraphQL and REST with AI-powered mocking, time-travel debugging, and performance analytics",
-  "main": "background.js",
-  "scripts": {
-    "dev": "./scripts/dev-firefox.sh",
-    "dev:firefox": "./scripts/dev-firefox.sh",
-    "dev:chrome": "./scripts/dev-chrome.sh",
-    "build": "node build/build.js",
-    "build:firefox": "node build/build.js && echo 'Firefox build: dist/firefox/'",
-    "build:chrome": "node build/build.js && echo 'Chrome build: dist/chrome/'",
-    "package": "npm run build",
-    "package:firefox": "cd dist/firefox && zip -r ../apilot-firefox.zip .",
-    "package:chrome": "cd dist/chrome && zip -r ../apilot-chrome.zip .",
-    "publish:firefox": "web-ext sign --source-dir=dist/firefox",
-    "publish:chrome": "echo 'Upload dist/apilot-chrome.zip to Chrome Web Store'",
-    "lint": "echo 'Add ESLint configuration if needed'",
-    "test": "echo 'Add test suite if needed'",
-    "clean": "rm -rf dist/ web-ext-artifacts/",
-    "web-ext": "web-ext run --firefox-profile=dev --keep-profile-changes"
-  },
   "keywords": [
-    "graphql",
-    "rest-api",
-    "api-testing",
-    "ai-mock",
-    "copilot",
-    "testing",
-    "debugging",
-    "firefox",
-    "chrome",
-    "extension",
-    "browser-extension",
-    "developer-tools",
-    "qa",
-    "mocking",
-    "monitoring",
-    "performance-analytics",
-    "time-travel-debugging",
-    "manifest-v2",
-    "manifest-v3"
+    "graphql", "rest-api", "api-testing", "ai-mock", "copilot", "testing",
+    "debugging", "firefox", "chrome", "extension", "browser-extension",
+    "developer-tools", "qa", "mocking", "monitoring", "performance-analytics",
+    "time-travel-debugging", "manifest-v2", "manifest-v3"
   ],
   "author": "Mohamed Zumair",
   "license": "MIT",
@@ -47,15 +14,39 @@
     "type": "git",
     "url": "https://github.com/mhdzumair/apilot"
   },
-  "bugs": {
-    "url": "https://github.com/mhdzumair/apilot/issues"
-  },
+  "bugs": { "url": "https://github.com/mhdzumair/apilot/issues" },
   "homepage": "https://github.com/mhdzumair/apilot#readme",
+  "scripts": {
+    "dev": "wxt dev -b firefox",
+    "dev:firefox": "wxt dev -b firefox",
+    "dev:chrome": "wxt dev -b chrome",
+    "build": "wxt build -b firefox && wxt build -b chrome",
+    "build:firefox": "wxt build -b firefox",
+    "build:chrome": "wxt build -b chrome",
+    "package": "wxt zip -b firefox && wxt zip -b chrome",
+    "package:firefox": "wxt zip -b firefox",
+    "package:chrome": "wxt zip -b chrome",
+    "clean": "rm -rf .output .wxt",
+    "typecheck": "tsc --noEmit",
+    "postinstall": "wxt prepare"
+  },
+  "dependencies": {
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "webextension-polyfill": "^0.12.0",
+    "zustand": "^5.0.0"
+  },
   "devDependencies": {
-    "web-ext": "^7.0.0",
-    "chrome-webstore-upload-cli": "^2.1.0"
+    "@tailwindcss/vite": "^4.0.0",
+    "@types/react": "^18.3.0",
+    "@types/react-dom": "^18.3.0",
+    "@types/webextension-polyfill": "^0.10.0",
+    "@wxt-dev/module-react": "^1.1.0",
+    "tailwindcss": "^4.0.0",
+    "typescript": "^5.5.0",
+    "wxt": "^0.20.0"
   },
   "engines": {
-    "node": ">=14.0.0"
+    "node": ">=18.0.0"
   }
 }

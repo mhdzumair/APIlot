@@ -1,0 +1,16 @@
+{
+  "extends": "./.wxt/tsconfig.json",
+  "compilerOptions": {
+    "jsx": "react-jsx",
+    "jsxImportSource": "react",
+    "paths": {
+      "@/*": ["./src/*"]
+    }
+  },
+  "exclude": [
+    "src-legacy",
+    "node_modules",
+    ".output",
+    ".wxt"
+  ]
+}

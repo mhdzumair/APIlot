@@ -142,7 +142,7 @@ class APIInterceptor {
     this.setupPageMessageBridge();
     const script = document.createElement('script');
     const runtime = chrome.runtime || browser.runtime;
-    script.src = runtime.getURL('src/content/injected-script.js');
+    script.src = runtime.getURL('src-legacy/content/injected-script.js');
     const payload = { ...this.pendingNetworkCapture };
     script.onload = () => {
       script.remove();
