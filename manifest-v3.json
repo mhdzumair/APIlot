@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "APIlot",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "description": "Your AI copilot for API testing - supports GraphQL and REST with AI-powered mocking, time-travel debugging, and performance analytics.",
   "author": "Mohamed Zumair",
 

@@ -12,7 +12,28 @@
   const originalFetch = window.fetch;
   const pendingRequests = new Map();
   let isMonitoringEnabled = true;
-  let restApiPatterns = ['/api/', '/v1/', '/v2/', '/v3/', '/rest/', '/services/'];
+
+  /** Synced from extension settings. If useFilters is false, all HTTP(S) fetch/XHR is captured (except GraphQL + special URLs). */
+  let networkCaptureSettings = {
+    useFilters: false,
+    includeSubstrings: [],
+    excludeSubstrings: [],
+    skipStaticExtensions: false
+  };
+
+  /** Keep in sync with DEFAULT_STATIC_EXTENSIONS in background/core.js */
+  const NETWORK_CAPTURE_STATIC_EXTENSIONS = ['.css', '.png', '.jpg', '.jpeg', '.gif', '.svg', '.ico', '.woff', '.woff2', '.ttf', '.eot', '.map', '.html', '.htm'];
+
+  window.addEventListener('message', (event) => {
+    if (event.source !== window || event.data?.type !== 'APILOT_SET_NETWORK_CAPTURE') return;
+    networkCaptureSettings = {
+      useFilters: false,
+      includeSubstrings: [],
+      excludeSubstrings: [],
+      skipStaticExtensions: false,
+      ...(event.data.payload || {})
+    };
+  });
 
   // Generate unique request IDs
   function generateRequestId() {
@@ -134,73 +155,66 @@
     return isGraphQL;
   }
 
-  // Check if a request is a REST API request
-  function isRESTRequest(url, options) {
-    const actualUrl = url || '';
-    const actualOptions = options || {};
-    const method = actualOptions?.method?.toUpperCase() || 'GET';
-    
-    // Skip if it's a GraphQL request
+  /**
+   * Whether to wrap this fetch/XHR as a captured “rest” request.
+   * No URL filtering unless Settings → Background network capture → Apply URL filters is enabled.
+   */
+  function shouldInterceptAsRest(url, options) {
     if (isGraphQLRequest(url, options)) {
       return false;
     }
 
-    // Skip non-HTTP requests (but allow relative URLs)
+    const actualUrl = url || '';
+
     if (actualUrl && !actualUrl.startsWith('http://') && !actualUrl.startsWith('https://') && !actualUrl.startsWith('/') && !actualUrl.startsWith('./')) {
-      // Check if it's a relative URL without leading slash
       if (!actualUrl.includes('://') && !actualUrl.startsWith('data:') && !actualUrl.startsWith('blob:')) {
-        // Allow relative URLs
+        // relative segment without leading slash
       } else {
         return false;
       }
     }
 
-    // Skip static resources
-    const staticExtensions = ['.js', '.css', '.png', '.jpg', '.jpeg', '.gif', '.svg', '.ico', '.woff', '.woff2', '.ttf', '.eot', '.map', '.html', '.htm'];
-    const urlPath = actualUrl.split('?')[0].toLowerCase();
-    if (staticExtensions.some(ext => urlPath.endsWith(ext))) {
+    const lower = actualUrl.toLowerCase();
+    if (lower.includes('chrome-extension://') || lower.includes('moz-extension://')) {
       return false;
     }
-
-    // Skip browser internal requests
-    if (actualUrl.startsWith('chrome-extension://') || actualUrl.startsWith('moz-extension://') || actualUrl.startsWith('chrome://') || actualUrl.startsWith('about:')) {
+    if (actualUrl.startsWith('chrome://') || actualUrl.startsWith('about:')) {
       return false;
     }
-
-    // Skip data and blob URLs
     if (actualUrl.startsWith('data:') || actualUrl.startsWith('blob:')) {
       return false;
     }
 
-    // Check for common REST API patterns
-    const hasRestPattern = restApiPatterns.some(pattern => actualUrl.toLowerCase().includes(pattern));
-    
-    // Check Content-Type for JSON (common in REST APIs)
-    const contentType = actualOptions.headers?.['content-type'] || actualOptions.headers?.['Content-Type'] || '';
-    const acceptHeader = actualOptions.headers?.['accept'] || actualOptions.headers?.['Accept'] || '';
-    const hasJsonContentType = contentType.includes('application/json') || acceptHeader.includes('application/json');
+    let policyUrl = actualUrl;
+    if (actualUrl && !actualUrl.startsWith('http') && !actualUrl.startsWith('//')) {
+      try {
+        policyUrl = new URL(actualUrl, window.location.href).href;
+      } catch (e) {
+        policyUrl = actualUrl;
+      }
+    }
 
-    // Check if it looks like an API endpoint (contains common API path segments)
-    const apiPathPatterns = ['/api', '/v1', '/v2', '/v3', '/rest', '/services', '/data', '/ajax', '/backend', '/rpc'];
-    const hasApiPath = apiPathPatterns.some(pattern => actualUrl.toLowerCase().includes(pattern));
+    const nc = networkCaptureSettings || { useFilters: false };
+    if (!nc.useFilters) {
+      return true;
+    }
 
-    // Check if URL looks like a REST resource (ends with ID or resource name)
-    const urlParts = actualUrl.split('?')[0].split('/').filter(p => p);
-    const lastPart = urlParts[urlParts.length - 1] || '';
-    const looksLikeResource = lastPart && !lastPart.includes('.') && lastPart.length > 0;
+    const urlLower = policyUrl.toLowerCase();
+    const urlPath = urlLower.split('?')[0];
+    if (nc.skipStaticExtensions && NETWORK_CAPTURE_STATIC_EXTENSIONS.some(ext => urlPath.endsWith(ext))) {
+      return false;
+    }
 
-    // REST detection: 
-    // 1. Has REST URL pattern
-    // 2. Has JSON content type with data methods
-    // 3. Has API path pattern
-    // 4. POST/PUT/PATCH/DELETE with no file extension (likely API call)
-    const isDataMethod = ['POST', 'PUT', 'PATCH', 'DELETE'].includes(method);
-    const isRest = hasRestPattern || 
-                   (hasJsonContentType && ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'].includes(method)) ||
-                   hasApiPath ||
-                   (isDataMethod && looksLikeResource);
+    const exclude = (nc.excludeSubstrings || []).map(s => String(s).toLowerCase());
+    if (exclude.some(sub => sub && urlLower.includes(sub))) {
+      return false;
+    }
 
-    return isRest;
+    const include = (nc.includeSubstrings || []).map(s => String(s).toLowerCase()).filter(Boolean);
+    if (include.length === 0) {
+      return true;
+    }
+    return include.some(sub => urlLower.includes(sub));
   }
 
   // Detect request type
@@ -208,7 +222,7 @@
     if (isGraphQLRequest(url, options)) {
       return 'graphql';
     }
-    if (isRESTRequest(url, options)) {
+    if (shouldInterceptAsRest(url, options)) {
       return 'rest';
     }
     return null;
@@ -548,6 +562,92 @@
     }
   });
 
+  function resolveArgUrlToString(url, options) {
+    if (url instanceof Request) {
+      return url.url;
+    }
+    if (typeof url === 'string') {
+      if (url && !url.startsWith('http') && !url.startsWith('//')) {
+        if (url.startsWith('/')) {
+          return window.location.origin + url;
+        }
+        try {
+          return new URL(url, window.location.href).href;
+        } catch (e) {
+          return url;
+        }
+      }
+      return url;
+    }
+    return String(url || '');
+  }
+
+  function buildRedirectTargetUrl(rule, sourceAbsoluteUrl) {
+    const base = (rule.redirectUrl || '').trim();
+    if (!base) return null;
+    try {
+      const src = new URL(sourceAbsoluteUrl);
+      if (rule.redirectFilenameOnly) {
+        const segments = src.pathname.split('/').filter(Boolean);
+        const filename = segments[segments.length - 1] || '';
+        if (!filename) return null;
+        const b = new URL(base);
+        return (
+          b.origin.replace(/\/$/, '') +
+          '/' +
+          filename +
+          src.search +
+          (src.hash || '')
+        );
+      }
+      if (rule.redirectPreservePath) {
+        return new URL(src.pathname + src.search + src.hash, base).href;
+      }
+      const b = new URL(base);
+      let out = b.origin + b.pathname;
+      if (b.search) {
+        out += b.search;
+      } else if (src.search) {
+        out += src.search;
+      }
+      if (src.hash && !out.includes('#')) out += src.hash;
+      return out;
+    } catch (e) {
+      return base;
+    }
+  }
+
+  /** Build [url, init] for fetch after a redirect rule (handles string URL or Request). */
+  function buildFetchArgsAfterRedirect(rule, originalArgs, resolvedSourceUrl) {
+    const targetUrl = buildRedirectTargetUrl(rule, resolvedSourceUrl);
+    if (!targetUrl) {
+      return originalArgs;
+    }
+    const [url, options = {}] = originalArgs;
+
+    if (url instanceof Request) {
+      const req = url;
+      const nextOpts = {
+        method: req.method,
+        headers: new Headers(req.headers),
+        body: options.body != null ? options.body : null,
+        mode: req.mode,
+        credentials: req.credentials,
+        cache: req.cache,
+        redirect: req.redirect,
+        referrer: req.referrer,
+        referrerPolicy: req.referrerPolicy,
+        integrity: req.integrity,
+        keepalive: req.keepalive,
+        signal: options.signal || req.signal
+      };
+      return [targetUrl, nextOpts];
+    }
+
+    const nextOpts = typeof options === 'object' && options !== null ? { ...options } : {};
+    return [targetUrl, nextOpts];
+  }
+
   // Apply multiple rules to request
   async function applyMultipleRules(rules, resolve, reject, originalArgs, requestId, requestType) {
     console.log(`🎯 [APILOT] Applying ${rules.length} rules for ${requestType} request`);
@@ -576,6 +676,17 @@
 
         reject(new Error(`Request blocked by APIlot rule: ${blockRule.name}`));
         return;
+      }
+
+      let argsForFetch = originalArgs;
+      const redirectRule = rules.find(rule => rule.action === 'redirect');
+      if (redirectRule) {
+        const resolvedSource = resolveArgUrlToString(originalArgs[0], originalArgs[1]);
+        const targetUrl = buildRedirectTargetUrl(redirectRule, resolvedSource);
+        if (targetUrl) {
+          argsForFetch = buildFetchArgsAfterRedirect(redirectRule, originalArgs, resolvedSource);
+          console.log(`🔀 [APILOT] Redirect rule "${redirectRule.name}" → ${targetUrl}`);
+        }
       }
 
       // Separate rules by type
@@ -610,7 +721,7 @@
       }
 
       // Apply all modify rules
-      let finalArgs = originalArgs;
+      let finalArgs = argsForFetch;
       if (modifyRules.length > 0) {
         console.log(`🔧 [APILOT] Applying modifications from ${modifyRules.length} rule(s)`);
 
@@ -632,7 +743,7 @@
           return combined;
         }, { variables: {}, body: {} });
 
-        const [url, options] = originalArgs;
+        const [url, options] = argsForFetch;
         let modifiedOptions = { ...options };
 
         if (options.body) {
@@ -758,6 +869,23 @@
 
           reject(new Error(`Request blocked by APIlot rule: ${rule.name}`));
           break;
+
+        case 'redirect': {
+          const resolvedSource = resolveArgUrlToString(originalArgs[0], originalArgs[1]);
+          const targetUrl = buildRedirectTargetUrl(rule, resolvedSource);
+          if (!targetUrl) {
+            const fallbackResponse = await originalFetch.apply(window, originalArgs);
+            await captureResponse(requestId, fallbackResponse.clone(), requestType);
+            resolve(fallbackResponse);
+            break;
+          }
+          const nextArgs = buildFetchArgsAfterRedirect(rule, originalArgs, resolvedSource);
+          console.log(`🔀 [APILOT] Redirect rule "${rule.name}" ${resolvedSource} → ${targetUrl}`);
+          const redirectResponse = await originalFetch.apply(window, nextArgs);
+          await captureResponse(requestId, redirectResponse.clone(), requestType);
+          resolve(redirectResponse);
+          break;
+        }
 
         default:
           const defaultResponse = await originalFetch.apply(window, originalArgs);

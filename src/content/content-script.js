@@ -2,9 +2,40 @@
 class APIInterceptor {
   constructor() {
     this.isMonitoring = false;
+    this.pendingNetworkCapture = {
+      useFilters: false,
+      includeSubstrings: [],
+      excludeSubstrings: [],
+      skipStaticExtensions: false
+    };
+    this._pageMessageListenerAttached = false;
     this.setupMessageListener();
+    this.setupPageMessageBridge();
     // Don't inject interceptor immediately - wait for DevTools to open
     this.checkInitialDevToolsState();
+  }
+
+  defaultNetworkCapture() {
+    return {
+      useFilters: false,
+      includeSubstrings: [],
+      excludeSubstrings: [],
+      skipStaticExtensions: false
+    };
+  }
+
+  async refreshNetworkCaptureSettings() {
+    const runtime = chrome.runtime || browser.runtime;
+    try {
+      const res = await runtime.sendMessage({ type: 'GET_SETTINGS' });
+      const nc = res?.settings?.networkCapture;
+      this.pendingNetworkCapture = {
+        ...this.defaultNetworkCapture(),
+        ...(nc || {})
+      };
+    } catch (e) {
+      this.pendingNetworkCapture = this.defaultNetworkCapture();
+    }
   }
   
   setupMessageListener() {
@@ -12,16 +43,59 @@ class APIInterceptor {
     runtime.onMessage.addListener((message, sender, sendResponse) => {
       if (message.type === 'PING') {
         sendResponse({ success: true, message: 'Content script active' });
+        return false;
       } else if (message.type === 'START_MONITORING') {
         console.log('🟢 [CONTENT] Starting API monitoring');
-        this.startMonitoring();
-        sendResponse({ success: true });
+        this.startMonitoring()
+          .then(() => sendResponse({ success: true }))
+          .catch((err) => sendResponse({ success: false, error: err?.message || String(err) }));
+        return true;
       } else if (message.type === 'STOP_MONITORING') {
         console.log('🔴 [CONTENT] Stopping API monitoring');
         this.stopMonitoring();
         sendResponse({ success: true });
+        return false;
+      } else if (message.type === 'NETWORK_CAPTURE_SETTINGS') {
+        const nc = message.data?.networkCapture;
+        if (nc) {
+          this.pendingNetworkCapture = { ...this.defaultNetworkCapture(), ...nc };
+          window.postMessage(
+            { type: 'APILOT_SET_NETWORK_CAPTURE', payload: this.pendingNetworkCapture },
+            '*'
+          );
+        }
+        sendResponse({ success: true });
+        return false;
       }
-      return true;
+      return false;
+    });
+  }
+
+  setupPageMessageBridge() {
+    if (this._pageMessageListenerAttached) return;
+    this._pageMessageListenerAttached = true;
+    window.addEventListener('message', async (event) => {
+      if (event.source !== window || !event.data.type) return;
+
+      switch (event.data.type) {
+        case 'API_REQUEST_DETECTED':
+          await this.handleAPIRequest(event.data.payload);
+          break;
+
+        case 'API_RESPONSE_CAPTURED':
+          await this.handleAPIResponse(event.data.payload);
+          break;
+
+        case 'GRAPHQL_REQUEST_DETECTED':
+          event.data.payload.requestType = 'graphql';
+          await this.handleAPIRequest(event.data.payload);
+          break;
+
+        case 'GRAPHQL_RESPONSE_CAPTURED':
+          event.data.payload.requestType = 'graphql';
+          await this.handleAPIResponse(event.data.payload);
+          break;
+      }
     });
   }
   
@@ -42,8 +116,9 @@ class APIInterceptor {
     });
   }
   
-  startMonitoring() {
+  async startMonitoring() {
     if (!this.isMonitoring) {
+      await this.refreshNetworkCaptureSettings();
       this.isMonitoring = true;
       this.injectInterceptor();
       console.log('✅ [CONTENT] API monitoring started');
@@ -64,41 +139,17 @@ class APIInterceptor {
   }
   
   injectInterceptor() {
-    // Inject script into page context to intercept fetch/XHR
+    this.setupPageMessageBridge();
     const script = document.createElement('script');
     const runtime = chrome.runtime || browser.runtime;
     script.src = runtime.getURL('src/content/injected-script.js');
-    script.onload = () => script.remove();
+    const payload = { ...this.pendingNetworkCapture };
+    script.onload = () => {
+      script.remove();
+      window.postMessage({ type: 'APILOT_SET_NETWORK_CAPTURE', payload }, '*');
+    };
     script.onerror = () => console.error('Failed to inject API interceptor script');
     (document.head || document.documentElement).appendChild(script);
-    
-    // Listen for messages from injected script
-    window.addEventListener('message', async (event) => {
-      if (event.source !== window || !event.data.type) return;
-      
-      switch (event.data.type) {
-        // New unified API messages
-        case 'API_REQUEST_DETECTED':
-          await this.handleAPIRequest(event.data.payload);
-          break;
-          
-        case 'API_RESPONSE_CAPTURED':
-          await this.handleAPIResponse(event.data.payload);
-          break;
-          
-        // Legacy GraphQL-specific messages (for backward compatibility)
-        case 'GRAPHQL_REQUEST_DETECTED':
-          // Convert to unified format
-          event.data.payload.requestType = 'graphql';
-          await this.handleAPIRequest(event.data.payload);
-          break;
-          
-        case 'GRAPHQL_RESPONSE_CAPTURED':
-          event.data.payload.requestType = 'graphql';
-          await this.handleAPIResponse(event.data.payload);
-          break;
-      }
-    });
   }
   
   async handleAPIRequest(payload) {

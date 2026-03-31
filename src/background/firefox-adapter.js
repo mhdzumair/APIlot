@@ -6,6 +6,11 @@ class FirefoxAdapter {
         this.setupTabListeners();
     }
 
+    /** MV2: blocking webRequest redirects are available for &lt;script src&gt; etc. */
+    supportsBlockingWebRequestRedirects() {
+        return true;
+    }
+
     async loadFromStorage(keys) {
         const storage = chrome.storage || browser.storage;
         return await storage.local.get(keys) || {};
@@ -18,7 +23,12 @@ class FirefoxAdapter {
 
     async initializeTabStates(tabStatesData) {
         if (tabStatesData) {
-            this.tabStates = new Map(Object.entries(tabStatesData));
+            this.tabStates = new Map();
+            for (const [k, v] of Object.entries(tabStatesData)) {
+                const num = Number(k);
+                const key = !Number.isNaN(num) && String(num) === String(k).trim() ? num : k;
+                this.tabStates.set(key, v);
+            }
         }
     }
 
@@ -26,15 +36,36 @@ class FirefoxAdapter {
         return Object.fromEntries(this.tabStates);
     }
 
+    peekTabState(tabId) {
+        if (this.tabStates.has(tabId)) {
+            return this.tabStates.get(tabId);
+        }
+        const n = Number(tabId);
+        if (!Number.isNaN(n) && this.tabStates.has(n)) {
+            return this.tabStates.get(n);
+        }
+        const s = String(tabId);
+        if (this.tabStates.has(s)) {
+            return this.tabStates.get(s);
+        }
+        return null;
+    }
+
     async getTabState(tabId) {
-        if (!this.tabStates.has(tabId)) {
-            this.tabStates.set(tabId, {
+        const canonical = typeof tabId === 'number' && !Number.isNaN(tabId)
+            ? tabId
+            : /^\d+$/.test(String(tabId))
+                ? Number(tabId)
+                : tabId;
+
+        if (!this.tabStates.has(canonical)) {
+            this.tabStates.set(canonical, {
                 enabled: false,
                 requestLog: [],
                 devToolsOpen: false
             });
         }
-        return this.tabStates.get(tabId);
+        return this.tabStates.get(canonical);
     }
 
     async setTabDevToolsState(tabId, isOpen) {
@@ -47,7 +78,7 @@ class FirefoxAdapter {
     }
 
     updateTabBadge(tabId) {
-        const tabState = this.tabStates.get(tabId);
+        const tabState = this.peekTabState(tabId);
         if (!tabState) return;
 
         const isActive = tabState.enabled && tabState.devToolsOpen;
@@ -214,7 +245,7 @@ class FirefoxAdapter {
         // Handle Firefox-specific messages
         switch (message.type) {
             case 'DEVTOOLS_OPENED':
-                const previousDevToolsState = this.tabStates.get(message.tabId)?.devToolsOpen || false;
+                const previousDevToolsState = this.peekTabState(message.tabId)?.devToolsOpen || false;
                 await this.setTabDevToolsState(message.tabId, true);
 
                 const tabState = await this.getTabState(message.tabId);

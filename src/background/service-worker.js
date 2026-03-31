@@ -1,6 +1,6 @@
 // Chrome Service Worker using shared core
 // Import shared components
-importScripts('core.js', 'icon-manager.js', 'chrome-adapter.js');
+importScripts('../shared/apilot-rule-match.js', 'core.js', 'icon-manager.js', 'chrome-adapter.js');
 
 class GraphQLTestingEngine {
     constructor() {
