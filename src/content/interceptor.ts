@@ -41,7 +41,11 @@ export class APIInterceptor {
     this.pendingNetworkCapture = this.defaultNetworkCapture();
     this.setupMessageListener();
     this.setupPageMessageBridge();
-    // Don't inject interceptor immediately - wait for DevTools to open
+    // Inject immediately at document_start so window.fetch is patched BEFORE
+    // any page scripts run and save a reference to the original fetch.
+    // The injected script's GET_ENABLED_STATUS check gates what actually gets forwarded.
+    this.injectInterceptor();
+    // After injection, check if DevTools is open to set the isMonitoring flag
     this.checkInitialDevToolsState();
   }
 
@@ -167,14 +171,13 @@ export class APIInterceptor {
   }
 
   async startMonitoring(): Promise<void> {
-    if (!this.isMonitoring) {
-      await this.refreshNetworkCaptureSettings();
-      this.isMonitoring = true;
-      this.injectInterceptor();
-      console.log('[CONTENT] API monitoring started');
-    } else {
-      console.log('[CONTENT] API monitoring already active, skipping start');
-    }
+    await this.refreshNetworkCaptureSettings();
+    this.isMonitoring = true;
+    // Re-enable the injected script in case it was stopped by a previous stopMonitoring() call
+    window.postMessage({ type: 'START_API_MONITORING' }, '*');
+    // Push latest network capture settings
+    window.postMessage({ type: 'APILOT_SET_NETWORK_CAPTURE', payload: { ...this.pendingNetworkCapture } }, '*');
+    console.log('[CONTENT] API monitoring started');
   }
 
   stopMonitoring(): void {

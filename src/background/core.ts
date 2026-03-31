@@ -357,7 +357,7 @@ export class APITestingCore {
     const tabState = this.adapter.peekTabState(tabId);
     if (!tabState || !tabState.requestLog) return false;
 
-    const recentCutoff = Date.now() - 2000;
+    const recentCutoff = Date.now() - 60_000; // 60s — covers slow requests that take >2s
 
     for (const logEntry of tabState.requestLog) {
       if (!logEntry.timestamp) continue;
@@ -1227,6 +1227,24 @@ export class APITestingCore {
             devToolsOpen: requestTabState ? requestTabState.devToolsOpen : false,
             enabled: requestTabState ? requestTabState.enabled : false,
           });
+          break;
+        }
+
+        case 'FETCH_INTROSPECTION': {
+          // Fetch directly from the background script — it has <all_urls> host permission
+          // so cross-origin requests are allowed. Auth headers are passed explicitly by the panel.
+          const fi = msg as { endpoint: string; headers: Record<string, string>; body: string };
+          try {
+            const res = await fetch(fi.endpoint, {
+              method: 'POST',
+              headers: fi.headers,
+              body: fi.body,
+            });
+            const body = await res.text();
+            sendResponse({ success: true, status: res.status, ok: res.ok, body });
+          } catch (err) {
+            sendResponse({ success: false, error: err instanceof Error ? err.message : 'Fetch failed' });
+          }
           break;
         }
 

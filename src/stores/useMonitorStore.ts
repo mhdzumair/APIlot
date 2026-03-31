@@ -16,6 +16,7 @@ interface MonitorState {
   isEnabled: boolean;
   tabId: number;
   aiMockRequest: LogEntry | null;
+  ruleFromRequest: LogEntry | null;
 
   // actions
   setTabId: (tabId: number) => void;
@@ -28,6 +29,7 @@ interface MonitorState {
   setAutoScroll: (autoScroll: boolean) => void;
   clearLog: () => void;
   setAiMockRequest: (request: LogEntry | null) => void;
+  setRuleFromRequest: (request: LogEntry | null) => void;
 }
 
 const DEFAULT_FILTERS: Filters = {
@@ -90,6 +92,7 @@ export const useMonitorStore = create<MonitorState>((set, get) => ({
   isEnabled: false,
   tabId: -1,
   aiMockRequest: null,
+  ruleFromRequest: null,
 
   setTabId: (tabId) => set({ tabId }),
 
@@ -150,4 +153,6 @@ export const useMonitorStore = create<MonitorState>((set, get) => ({
     }),
 
   setAiMockRequest: (request) => set({ aiMockRequest: request }),
+
+  setRuleFromRequest: (request) => set({ ruleFromRequest: request }),
 }));

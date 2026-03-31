@@ -270,7 +270,7 @@ export function SettingsTab() {
   const providerFields = PROVIDER_FIELDS[aiSettings.provider];
 
   return (
-    <div className="p-4 space-y-8 max-w-2xl">
+    <div className="p-4 space-y-8 max-w-2xl mx-auto">
       {/* ------------------------------------------------------------------ */}
       {/* General Settings                                                     */}
       {/* ------------------------------------------------------------------ */}

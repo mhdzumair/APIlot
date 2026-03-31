@@ -519,6 +519,12 @@ export default defineUnlistedScript(() => {
     if (event.source !== window || !(event.data as any).type) return;
 
     // Handle monitoring control messages
+    if ((event.data as any).type === 'START_API_MONITORING') {
+      console.log('🟢 [APILOT] Resuming API monitoring');
+      isMonitoringEnabled = true;
+      return;
+    }
+
     if ((event.data as any).type === 'STOP_API_MONITORING') {
       console.log('🔴 [APILOT] Stopping API monitoring');
       isMonitoringEnabled = false;

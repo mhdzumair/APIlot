@@ -9,25 +9,53 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { useMonitorStore } from '@/stores/useMonitorStore';
+import type { LogEntry } from '@/types/requests';
 
 interface EndpointSelectorProps {
   value: string;
   onChange: (url: string) => void;
+  /** Called when a detected endpoint is selected — includes the originating request so auth can be extracted */
+  onRequestSelected?: (entry: LogEntry) => void;
 }
 
-export function EndpointSelector({ value, onChange }: EndpointSelectorProps) {
+export function EndpointSelector({ value, onChange, onRequestSelected }: EndpointSelectorProps) {
   const requestLog = useMonitorStore((s) => s.requestLog);
 
-  const detectedEndpoints = React.useMemo(() => {
+  // Collect unique GraphQL endpoints, keeping the best entry per URL for auth extraction.
+  // "Best" = has auth headers. If no entry has auth headers, fall back to most recent.
+  const { detectedEndpoints, latestByUrl } = React.useMemo(() => {
     const seen = new Set<string>();
     const endpoints: string[] = [];
-    for (const entry of requestLog) {
-      if (entry.requestType === 'graphql' && entry.url && !seen.has(entry.url)) {
-        seen.add(entry.url);
-        endpoints.push(entry.url);
+    const latestByUrl = new Map<string, LogEntry>(); // most recent entry per URL
+    const bestByUrl = new Map<string, LogEntry>();   // entry with auth headers per URL
+
+    const hasAuthHeaders = (entry: LogEntry) => {
+      const headers = entry.requestHeaders ?? {};
+      return Object.keys(headers).some((k) =>
+        /^(authorization|x-api-key|api-key|apikey|x-auth-token)$/i.test(k)
+      );
+    };
+
+    // Iterate newest-first
+    for (let i = requestLog.length - 1; i >= 0; i--) {
+      const entry = requestLog[i];
+      if (entry.requestType === 'graphql' && entry.url) {
+        if (!latestByUrl.has(entry.url)) latestByUrl.set(entry.url, entry);
+        if (!bestByUrl.has(entry.url) && hasAuthHeaders(entry)) bestByUrl.set(entry.url, entry);
+        if (!seen.has(entry.url)) {
+          seen.add(entry.url);
+          endpoints.unshift(entry.url);
+        }
       }
     }
-    return endpoints;
+
+    // Merge: prefer the entry with auth headers; fall back to most recent
+    const merged = new Map<string, LogEntry>();
+    for (const url of seen) {
+      merged.set(url, bestByUrl.get(url) ?? latestByUrl.get(url)!);
+    }
+
+    return { detectedEndpoints: endpoints, latestByUrl: merged };
   }, [requestLog]);
 
   const isManual = !detectedEndpoints.includes(value) || detectedEndpoints.length === 0;
@@ -37,6 +65,8 @@ export function EndpointSelector({ value, onChange }: EndpointSelectorProps) {
       onChange('');
     } else {
       onChange(selected);
+      const entry = latestByUrl.get(selected);
+      if (entry && onRequestSelected) onRequestSelected(entry);
     }
   };
 

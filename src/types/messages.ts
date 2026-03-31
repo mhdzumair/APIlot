@@ -88,7 +88,9 @@ export type PanelToBackgroundMessage =
   // Tab / devtools state queries
   | { type: 'GET_ENABLED_STATUS' }
   | { type: 'GET_TAB_STATUS'; tabId: number }
-  | { type: 'GET_TAB_STATE' };
+  | { type: 'GET_TAB_STATE' }
+  // Schema introspection — fetched directly by background script (has <all_urls> host permission)
+  | { type: 'FETCH_INTROSPECTION'; endpoint: string; headers: Record<string, string>; body: string };
 
 // ---------------------------------------------------------------------------
 // Background → Content script messages
@@ -168,6 +170,9 @@ export interface MessageResponses {
     devToolsOpen: boolean;
     enabled: boolean;
   };
+  FETCH_INTROSPECTION:
+    | { success: true; status: number; ok: boolean; body: string }
+    | { success: false; error: string };
 }
 
 // Convenience: error response shape returned on unhandled exceptions

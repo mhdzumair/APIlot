@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { sendMsg } from '@/lib/messaging';
@@ -14,6 +14,8 @@ import type { ApiRule } from '@/types/rules';
 
 export function RulesTab() {
   const { rules, deleteRule: storeDeleteRule, setRules } = useRulesStore();
+  const pendingNewRule = useRulesStore((s) => s.pendingNewRule);
+  const setPendingNewRule = useRulesStore((s) => s.setPendingNewRule);
 
   // Editor dialog state
   const [editorOpen, setEditorOpen] = useState(false);
@@ -22,6 +24,16 @@ export function RulesTab() {
 
   // Hidden file input for import
   const importInputRef = useRef<HTMLInputElement>(null);
+
+  // Open Add dialog pre-filled when triggered from a request row
+  useEffect(() => {
+    if (pendingNewRule) {
+      setEditingRuleId(null);
+      setEditingRule(pendingNewRule as ApiRule);
+      setEditorOpen(true);
+      setPendingNewRule(null);
+    }
+  }, [pendingNewRule, setPendingNewRule]);
 
   // ------------------------------------------------------------------
   // Add / Edit handlers

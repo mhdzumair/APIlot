@@ -13,6 +13,7 @@ import { useSchemaStore } from '@/stores/useSchemaStore';
 import { EndpointSelector } from '../schema/EndpointSelector';
 import { SchemaViewer } from '../schema/SchemaViewer';
 import { fetchIntrospection } from '@/lib/introspection';
+import type { LogEntry } from '@/types/requests';
 
 export function SchemaExplorerTab() {
   const selectedEndpoint = useSchemaStore((s) => s.selectedEndpoint);
@@ -28,7 +29,6 @@ export function SchemaExplorerTab() {
   const setLoading = useSchemaStore((s) => s.setLoading);
   const setError = useSchemaStore((s) => s.setError);
   const setAuth = useSchemaStore((s) => s.setAuth);
-
   // Local state for the endpoint text input (may differ from committed selectedEndpoint)
   const [endpointInput, setEndpointInput] = React.useState(selectedEndpoint ?? '');
 
@@ -44,6 +44,39 @@ export function SchemaExplorerTab() {
   const handleEndpointChange = (url: string) => {
     setEndpointInput(url);
     setSelectedEndpoint(url || null);
+  };
+
+  /**
+   * When a detected endpoint is selected, sniff the auth headers from the
+   * most recent captured request for that URL and pre-populate the auth fields.
+   */
+  const handleRequestSelected = (entry: LogEntry) => {
+    const headers = entry.requestHeaders ?? {};
+    // Case-insensitive header lookup helper
+    const findHeader = (name: string) =>
+      Object.entries(headers).find(([k]) => k.toLowerCase() === name.toLowerCase())?.[1];
+
+    const authorization = findHeader('Authorization');
+    if (authorization) {
+      if (authorization.startsWith('Bearer ') || authorization.startsWith('bearer ')) {
+        setAuth('bearer', authorization.replace(/^bearer /i, '').trim(), 'Authorization');
+        return;
+      }
+      setAuth('custom', authorization, 'Authorization');
+      return;
+    }
+
+    // Look for common API-key style headers
+    const apiKeyEntry = Object.entries(headers).find(([k]) =>
+      /^(x-api-key|api-key|apikey|x-auth-token)$/i.test(k)
+    );
+    if (apiKeyEntry) {
+      setAuth('apikey', apiKeyEntry[1], apiKeyEntry[0]);
+      return;
+    }
+
+    // No recognisable auth found in captured headers — leave existing auth unchanged
+    // so manually entered tokens are not destroyed.
   };
 
   const handleLoadSchema = async () => {
@@ -92,11 +125,22 @@ export function SchemaExplorerTab() {
       {/* Configuration panel */}
       <div className="flex flex-col gap-3 px-3 py-2.5 border-b shrink-0">
         {/* Endpoint selector */}
-        <EndpointSelector value={endpointInput} onChange={handleEndpointChange} />
+        <EndpointSelector
+          value={endpointInput}
+          onChange={handleEndpointChange}
+          onRequestSelected={handleRequestSelected}
+        />
 
         {/* Auth settings */}
         <div className="flex flex-col gap-1.5">
-          <Label className="text-xs text-muted-foreground">Authentication</Label>
+          <div className="flex items-center gap-2">
+            <Label className="text-xs text-muted-foreground">Authentication</Label>
+            {authType !== 'none' && authValue && (
+              <span className="text-[10px] text-emerald-500 bg-emerald-500/10 px-1.5 py-0.5 rounded font-medium">
+                ✓ token set
+              </span>
+            )}
+          </div>
           <div className="flex gap-2 items-start">
             <Select
               value={authType}

@@ -5,6 +5,7 @@ interface RulesState {
   rules: Map<string, ApiRule>;
   editingRule: ApiRule | null;
   editingRuleId: string | null;
+  pendingNewRule: Partial<ApiRule> | null;
 
   // actions
   setRules: (rules: Map<string, ApiRule> | [string, ApiRule][]) => void;
@@ -12,12 +13,14 @@ interface RulesState {
   updateRule: (id: string, rule: ApiRule) => void;
   deleteRule: (id: string) => void;
   setEditingRule: (id: string | null, rule: ApiRule | null) => void;
+  setPendingNewRule: (rule: Partial<ApiRule> | null) => void;
 }
 
 export const useRulesStore = create<RulesState>((set) => ({
   rules: new Map<string, ApiRule>(),
   editingRule: null,
   editingRuleId: null,
+  pendingNewRule: null,
 
   setRules: (input) => {
     const rules =
@@ -48,4 +51,6 @@ export const useRulesStore = create<RulesState>((set) => ({
 
   setEditingRule: (id, rule) =>
     set({ editingRuleId: id, editingRule: rule }),
+
+  setPendingNewRule: (rule) => set({ pendingNewRule: rule }),
 }));

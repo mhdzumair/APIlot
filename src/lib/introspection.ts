@@ -1,25 +1,91 @@
 import type { SchemaData, SchemaField, SchemaType } from '@/stores/useSchemaStore';
+import { sendMsg } from '@/lib/messaging';
 
 const INTROSPECTION_QUERY = `
-query IntrospectionQuery {
-  __schema {
-    queryType { name }
-    mutationType { name }
-    subscriptionType { name }
-    types {
-      ...FullType
-    }
-  }
-}
-fragment FullType on __Type {
-  kind name description
-  fields(includeDeprecated: true) { name description args { ...InputValue } type { ...TypeRef } }
-  inputFields { ...InputValue }
-  enumValues(includeDeprecated: true) { name description }
-}
-fragment InputValue on __InputValue { name description type { ...TypeRef } defaultValue }
-fragment TypeRef on __Type { kind name ofType { kind name ofType { kind name ofType { kind name } } } }
-`.trim();
+        query IntrospectionQuery {
+          __schema {
+            queryType { name }
+            mutationType { name }
+            subscriptionType { name }
+            types {
+              ...FullType
+            }
+          }
+        }
+
+        fragment FullType on __Type {
+          kind
+          name
+          description
+          fields(includeDeprecated: true) {
+            name
+            description
+            args {
+              ...InputValue
+            }
+            type {
+              ...TypeRef
+            }
+            isDeprecated
+            deprecationReason
+          }
+          inputFields {
+            ...InputValue
+          }
+          interfaces {
+            ...TypeRef
+          }
+          enumValues(includeDeprecated: true) {
+            name
+            description
+            isDeprecated
+            deprecationReason
+          }
+          possibleTypes {
+            ...TypeRef
+          }
+        }
+
+        fragment InputValue on __InputValue {
+          name
+          description
+          type { ...TypeRef }
+          defaultValue
+        }
+
+        fragment TypeRef on __Type {
+          kind
+          name
+          ofType {
+            kind
+            name
+            ofType {
+              kind
+              name
+              ofType {
+                kind
+                name
+                ofType {
+                  kind
+                  name
+                  ofType {
+                    kind
+                    name
+                    ofType {
+                      kind
+                      name
+                      ofType {
+                        kind
+                        name
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      `;
 
 /** Recursively converts a GraphQL TypeRef object into a human-readable string, e.g. `[String!]!` */
 function typeRefToString(typeRef: IntrospectionTypeRef | null | undefined): string {
@@ -59,6 +125,7 @@ interface IntrospectionEnumValue {
   name: string;
   description?: string | null;
   isDeprecated?: boolean;
+  deprecationReason?: string | null;
 }
 
 interface IntrospectionType {
@@ -159,6 +226,36 @@ function parseIntrospectionSchema(raw: IntrospectionSchema): SchemaData {
   return { queries, mutations, subscriptions, types };
 }
 
+/** Direct fetch fallback when background routing is unavailable */
+async function fetchDirect(
+  endpoint: string,
+  headers: Record<string, string>,
+  body: string,
+): Promise<IntrospectionResponse> {
+  let response: Response;
+  try {
+    response = await fetch(endpoint, { method: 'POST', headers, body });
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : 'Network error' };
+  }
+  if (!response.ok) {
+    return { ok: false, error: `HTTP ${response.status}: ${response.statusText}` };
+  }
+  let result: IntrospectionResult;
+  try {
+    result = (await response.json()) as IntrospectionResult;
+  } catch {
+    return { ok: false, error: 'Failed to parse JSON response' };
+  }
+  if (result.errors && result.errors.length > 0) {
+    return { ok: false, error: result.errors.map((e) => e.message).join(', ') };
+  }
+  if (!result.data?.__schema) {
+    return { ok: false, error: 'No schema data in response' };
+  }
+  return { ok: true, schema: parseIntrospectionSchema(result.data.__schema), raw: result.data.__schema };
+}
+
 export interface IntrospectionOptions {
   endpoint: string;
   authType?: 'none' | 'bearer' | 'apikey' | 'custom';
@@ -196,47 +293,34 @@ export async function fetchIntrospection(
     headers[authHeader || 'Authorization'] = authValue;
   }
 
-  let response: Response;
-  try {
-    response = await fetch(endpoint, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify({ query: INTROSPECTION_QUERY }),
-    });
-  } catch (err) {
-    return {
-      ok: false,
-      error: err instanceof Error ? err.message : 'Network error',
-    };
-  }
+  const body = JSON.stringify({ query: INTROSPECTION_QUERY });
 
-  if (!response.ok) {
-    return {
-      ok: false,
-      error: `HTTP ${response.status}: ${response.statusText}`,
-    };
-  }
-
-  let result: IntrospectionResult;
+  // Route through the background script — it has <all_urls> host permission so
+  // it can make cross-origin requests with the auth headers we pass explicitly.
   try {
-    result = (await response.json()) as IntrospectionResult;
+    const msg = await sendMsg({ type: 'FETCH_INTROSPECTION', endpoint, headers, body });
+    if (!msg.success) {
+      return { ok: false, error: (msg as { success: false; error: string }).error };
+    }
+    const r = msg as { success: true; status: number; ok: boolean; body: string };
+    if (!r.ok) {
+      return { ok: false, error: `HTTP ${r.status}` };
+    }
+    let result: IntrospectionResult;
+    try {
+      result = JSON.parse(r.body) as IntrospectionResult;
+    } catch {
+      return { ok: false, error: 'Failed to parse JSON response' };
+    }
+    if (result.errors && result.errors.length > 0) {
+      return { ok: false, error: result.errors.map((e) => e.message).join(', ') };
+    }
+    if (!result.data?.__schema) {
+      return { ok: false, error: 'No schema data in response' };
+    }
+    return { ok: true, schema: parseIntrospectionSchema(result.data.__schema), raw: result.data.__schema };
   } catch {
-    return { ok: false, error: 'Failed to parse JSON response' };
+    // Background messaging unavailable — fall back to direct fetch
+    return fetchDirect(endpoint, headers, body);
   }
-
-  if (result.errors && result.errors.length > 0) {
-    return {
-      ok: false,
-      error: result.errors.map((e) => e.message).join(', '),
-    };
-  }
-
-  if (!result.data?.__schema) {
-    return { ok: false, error: 'No schema data in response' };
-  }
-
-  const raw = result.data.__schema;
-  const schema = parseIntrospectionSchema(raw);
-
-  return { ok: true, schema, raw };
 }

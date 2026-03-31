@@ -1,41 +1,11 @@
 import * as React from 'react';
-import { useState } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import type { LogEntry } from '@/types/requests';
 import { CodeBlock } from './CodeBlock';
 import { cn } from '@/lib/utils';
 
 interface RequestDetailsProps {
   request: LogEntry;
-}
-
-interface SectionProps {
-  title: string;
-  content: string;
-  language?: 'json' | 'graphql';
-  defaultOpen?: boolean;
-}
-
-function CollapsibleSection({ title, content, language = 'json', defaultOpen = false }: SectionProps) {
-  const [open, setOpen] = useState(defaultOpen);
-
-  return (
-    <div className="border rounded mb-2">
-      <button
-        className="flex w-full items-center justify-between px-3 py-2 text-xs font-medium hover:bg-muted/50 transition-colors"
-        onClick={() => setOpen((v) => !v)}
-      >
-        <span>{title}</span>
-        <span className={cn('text-muted-foreground transition-transform text-[10px]', open && 'rotate-90')}>
-          ▶
-        </span>
-      </button>
-      {open && (
-        <div className="p-2 pt-0">
-          <CodeBlock content={content} language={language} />
-        </div>
-      )}
-    </div>
-  );
 }
 
 function safeStringify(value: unknown): string {
@@ -46,7 +16,74 @@ function safeStringify(value: unknown): string {
   }
 }
 
+interface Section {
+  title: string;
+  content: string;
+  language: 'json' | 'graphql';
+  defaultOpen?: boolean;
+}
+
+function CollapsibleSection({
+  title,
+  content,
+  language = 'json',
+  defaultOpen = false,
+  forceOpen = false,
+  searchTerm = '',
+}: Section & { forceOpen?: boolean; searchTerm?: string }) {
+  const [open, setOpen] = useState(defaultOpen);
+
+  // Force open when a search term matches this section
+  useEffect(() => {
+    if (forceOpen) setOpen(true);
+  }, [forceOpen]);
+
+  const matchCount = useMemo(() => {
+    if (!searchTerm.trim()) return 0;
+    const term = searchTerm.toLowerCase();
+    let count = 0;
+    let idx = content.toLowerCase().indexOf(term);
+    while (idx !== -1) {
+      count++;
+      idx = content.toLowerCase().indexOf(term, idx + 1);
+    }
+    return count;
+  }, [content, searchTerm]);
+
+  const hasMatch = matchCount > 0;
+
+  return (
+    <div className={cn('border rounded mb-2', hasMatch && searchTerm && 'border-primary/40')}>
+      <button
+        className="flex w-full items-center justify-between px-3 py-2 text-xs font-medium hover:bg-muted/50 transition-colors"
+        onClick={() => setOpen((v) => !v)}
+      >
+        <span className="flex items-center gap-2">
+          {title}
+          {hasMatch && searchTerm && (
+            <span className="text-[9px] font-medium bg-primary/20 text-primary px-1.5 py-0.5 rounded">
+              {matchCount} match{matchCount !== 1 ? 'es' : ''}
+            </span>
+          )}
+        </span>
+        <span className={cn('text-muted-foreground transition-transform text-[10px]', open && 'rotate-90')}>
+          ▶
+        </span>
+      </button>
+      {open && (
+        <div className="p-2 pt-0">
+          <CodeBlock content={content} language={language} searchTerm={searchTerm} />
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function RequestDetails({ request }: RequestDetailsProps) {
+  const [searchTerm, setSearchTerm] = useState('');
+  const [showSearch, setShowSearch] = useState(false);
+  const searchInputRef = useRef<HTMLInputElement>(null);
+
   const hasHeaders = !!(request.requestHeaders || request.responseHeaders);
 
   const headersContent = safeStringify({
@@ -54,22 +91,125 @@ export function RequestDetails({ request }: RequestDetailsProps) {
     ...(request.responseHeaders ? { response: request.responseHeaders } : {}),
   });
 
+  const statusColor =
+    !request.responseStatus
+      ? 'text-muted-foreground'
+      : request.responseStatus < 300
+      ? 'text-green-500'
+      : request.responseStatus < 400
+      ? 'text-yellow-500'
+      : 'text-red-500';
+
+  // Ctrl+F within this details panel
+  useEffect(() => {
+    function handleKeyDown(e: KeyboardEvent) {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'f') {
+        e.preventDefault();
+        e.stopPropagation();
+        setShowSearch(true);
+        // Focus on next tick so the input is mounted
+        setTimeout(() => searchInputRef.current?.focus(), 0);
+      }
+      if (e.key === 'Escape' && showSearch) {
+        setShowSearch(false);
+        setSearchTerm('');
+      }
+    }
+    document.addEventListener('keydown', handleKeyDown, true);
+    return () => document.removeEventListener('keydown', handleKeyDown, true);
+  }, [showSearch]);
+
+  // Build section contents for match checking
+  const queryContent = request.query ?? '';
+  const variablesContent = request.variables ? safeStringify(request.variables) : '';
+  const bodyContent =
+    request.body !== undefined
+      ? typeof request.body === 'string'
+        ? request.body
+        : safeStringify(request.body)
+      : '';
+  const responseContent =
+    request.response !== undefined
+      ? typeof request.response === 'string'
+        ? request.response
+        : safeStringify(request.response)
+      : '';
+  const errorContent = request.responseError ?? '';
+
+  const term = searchTerm.toLowerCase().trim();
+
+  function matches(content: string) {
+    return term !== '' && content.toLowerCase().includes(term);
+  }
+
   return (
-    <div className="p-2 border-t bg-background/50">
+    <div className="p-3 border-t bg-card/30 space-y-2">
+      {/* URL + status bar */}
+      <div className="flex items-start gap-2 text-xs">
+        <span className={`font-semibold tabular-nums shrink-0 ${statusColor}`}>
+          {request.responseStatus ?? '—'}
+        </span>
+        <span className="text-muted-foreground break-all leading-relaxed flex-1">{request.url}</span>
+        <button
+          className="shrink-0 text-[10px] text-muted-foreground hover:text-foreground px-1.5 py-0.5 rounded border hover:border-border border-transparent transition-colors"
+          title="Search in details (Ctrl+F)"
+          onClick={() => {
+            setShowSearch((v) => !v);
+            if (!showSearch) setTimeout(() => searchInputRef.current?.focus(), 0);
+          }}
+        >
+          ⌕ Find
+        </button>
+      </div>
+
+      {/* In-details search bar */}
+      {showSearch && (
+        <div className="flex items-center gap-2 rounded border bg-muted/30 px-2 py-1.5">
+          <span className="text-[10px] text-muted-foreground shrink-0">Find:</span>
+          <input
+            ref={searchInputRef}
+            type="text"
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            placeholder="Search in response, headers, query..."
+            className="flex-1 bg-transparent text-xs outline-none placeholder:text-muted-foreground/60 min-w-0"
+          />
+          {searchTerm && (
+            <span className="text-[10px] text-muted-foreground shrink-0">
+              {[queryContent, variablesContent, bodyContent, responseContent, errorContent, headersContent]
+                .join('\n')
+                .toLowerCase()
+                .split(term)
+                .length - 1} found
+            </span>
+          )}
+          <button
+            onClick={() => { setShowSearch(false); setSearchTerm(''); }}
+            className="text-[10px] text-muted-foreground hover:text-foreground shrink-0"
+          >
+            ✕
+          </button>
+        </div>
+      )}
+
       {/* GraphQL sections */}
       {request.requestType === 'graphql' && request.query && (
         <CollapsibleSection
           title="Query"
-          content={request.query}
+          content={queryContent}
           language="graphql"
           defaultOpen
+          forceOpen={matches(queryContent)}
+          searchTerm={searchTerm}
         />
       )}
       {request.requestType === 'graphql' && request.variables && (
         <CollapsibleSection
           title="Variables"
-          content={safeStringify(request.variables)}
+          content={variablesContent}
           language="json"
+          forceOpen={matches(variablesContent)}
+          searchTerm={searchTerm}
         />
       )}
 
@@ -77,9 +217,11 @@ export function RequestDetails({ request }: RequestDetailsProps) {
       {request.requestType === 'rest' && request.body !== undefined && (
         <CollapsibleSection
           title="Request Body"
-          content={typeof request.body === 'string' ? request.body : safeStringify(request.body)}
+          content={bodyContent}
           language="json"
           defaultOpen
+          forceOpen={matches(bodyContent)}
+          searchTerm={searchTerm}
         />
       )}
 
@@ -87,18 +229,22 @@ export function RequestDetails({ request }: RequestDetailsProps) {
       {request.response !== undefined ? (
         <CollapsibleSection
           title="Response"
-          content={typeof request.response === 'string' ? request.response : safeStringify(request.response)}
+          content={responseContent}
           language="json"
           defaultOpen
+          forceOpen={matches(responseContent)}
+          searchTerm={searchTerm}
         />
       ) : request.responseError ? (
         <CollapsibleSection
           title="Error"
-          content={request.responseError}
+          content={errorContent}
           language="json"
+          forceOpen={matches(errorContent)}
+          searchTerm={searchTerm}
         />
       ) : (
-        <div className="text-xs text-muted-foreground px-1 py-2">Response pending...</div>
+        <div className="text-xs text-muted-foreground py-1">Response pending…</div>
       )}
 
       {/* Headers */}
@@ -107,13 +253,10 @@ export function RequestDetails({ request }: RequestDetailsProps) {
           title="Headers"
           content={headersContent}
           language="json"
+          forceOpen={matches(headersContent)}
+          searchTerm={searchTerm}
         />
       )}
-
-      {/* URL (always shown) */}
-      <div className="text-[10px] text-muted-foreground px-1 pt-1 break-all">
-        {request.url}
-      </div>
     </div>
   );
 }

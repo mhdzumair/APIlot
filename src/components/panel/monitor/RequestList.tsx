@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { useEffect, useRef } from 'react';
+import { useRef, useCallback, useEffect } from 'react';
 import type { LogEntry } from '@/types/requests';
 import { useMonitorStore } from '@/stores/useMonitorStore';
 import { RequestItem } from './RequestItem';
@@ -36,7 +36,25 @@ export function RequestList({ requests }: RequestListProps) {
   const expandedIds = useMonitorStore((s) => s.expandedIds);
   const toggleExpanded = useMonitorStore((s) => s.toggleExpanded);
   const autoScroll = useMonitorStore((s) => s.autoScroll);
+  const setAutoScroll = useMonitorStore((s) => s.setAutoScroll);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
+  const lastScrollTop = useRef(0);
+
+  // Re-enable / disable auto-scroll based on scroll direction + position
+  const handleScroll = useCallback(() => {
+    const el = scrollContainerRef.current;
+    if (!el) return;
+    const isAtBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 60;
+    const scrollingUp = el.scrollTop < lastScrollTop.current;
+    lastScrollTop.current = el.scrollTop;
+
+    if (isAtBottom) {
+      setAutoScroll(true);
+    } else if (scrollingUp) {
+      setAutoScroll(false);
+    }
+  }, [setAutoScroll]);
 
   useEffect(() => {
     if (autoScroll && bottomRef.current) {
@@ -56,7 +74,7 @@ export function RequestList({ requests }: RequestListProps) {
   const groups = groupByPageGroup(requests);
 
   return (
-    <div className="flex-1 overflow-auto">
+    <div ref={scrollContainerRef} className="flex-1 overflow-auto" onScroll={handleScroll}>
       {groups.map((group, groupIndex) => (
         <div key={group.pageGroupId}>
           {/* Group header — only show if there are multiple groups */}

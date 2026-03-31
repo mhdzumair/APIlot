@@ -138,8 +138,9 @@ export function AnalyticsDashboard() {
         // The background returns PerformanceData; we map it to PerformanceMetrics shape
         // by treating the aggregates fields as metrics summary
         const data = response.metrics;
-        const aggr = data.aggregates;
-        const total = aggr.totalRequests;
+        const aggr = data?.aggregates;
+        if (!aggr) return;
+        const total = aggr.totalRequests ?? 0;
         const successRate = total > 0 ? Math.round((aggr.successCount / total) * 100) : 100;
         const errorRate = total > 0 ? Math.round((aggr.errorCount / total) * 100) : 0;
         const avgResponseTime =

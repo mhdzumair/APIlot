@@ -25,8 +25,10 @@ const PANEL_TABS = [
   { value: 'monitor', label: 'Monitor' },
   { value: 'rules', label: 'Rules' },
   { value: 'settings', label: 'Settings' },
-  { value: 'schema', label: 'Schema Explorer' },
-  { value: 'builder', label: 'Query Builder' },
+  { value: 'analytics', label: 'Analytics' },
+  { value: 'timetravel', label: 'Time Travel' },
+  { value: 'schema', label: 'Schema' },
+  { value: 'builder', label: 'Builder' },
 ] as const;
 
 type PanelTab = (typeof PANEL_TABS)[number]['value'];
@@ -42,8 +44,14 @@ interface PanelAppProps {
 export function PanelApp({ tabId }: PanelAppProps) {
   const monitorStore = useMonitorStore();
   const rulesStore = useRulesStore();
-  const [showAnalytics, setShowAnalytics] = useState(false);
-  const [showTimeTravel, setShowTimeTravel] = useState(false);
+  const pendingNewRule = useRulesStore((s) => s.pendingNewRule);
+  const setPendingNewRule = useRulesStore((s) => s.setPendingNewRule);
+  const [activeTab, setActiveTab] = useState<PanelTab>('monitor');
+
+  // Clear pendingNewRule if it was set via tab switching (legacy - no longer needed)
+  useEffect(() => {
+    if (pendingNewRule) setPendingNewRule(null);
+  }, [pendingNewRule, setPendingNewRule]);
 
   // ------------------------------------------------------------------
   // Set tabId in monitor store + signal DevTools open/closed to background
@@ -149,86 +157,67 @@ export function PanelApp({ tabId }: PanelAppProps) {
 
   return (
     <ThemeProvider>
-      <div className="flex flex-col h-screen bg-background text-foreground overflow-hidden">
-        {/* Header */}
-        <div className="flex items-center gap-3 px-4 py-2 border-b shrink-0">
-          <h1 className="text-sm font-bold">APIlot</h1>
-          <span className="text-xs text-muted-foreground">
-            Tab&nbsp;
-            <span className="font-mono">{tabId === -1 ? 'unknown' : tabId}</span>
-          </span>
-          {/* Extension toolbar buttons */}
-          <div className="ml-auto flex gap-1.5">
-            <button
-              onClick={() => { setShowAnalytics((v) => !v); setShowTimeTravel(false); }}
-              title="Analytics"
-              className={`rounded px-2 py-1 text-xs border transition-colors ${
-                showAnalytics
-                  ? 'bg-primary text-primary-foreground border-primary'
-                  : 'bg-background hover:bg-muted border-border'
-              }`}
-            >
-              Analytics
-            </button>
-            <button
-              onClick={() => { setShowTimeTravel((v) => !v); setShowAnalytics(false); }}
-              title="Time Travel"
-              className={`rounded px-2 py-1 text-xs border transition-colors ${
-                showTimeTravel
-                  ? 'bg-primary text-primary-foreground border-primary'
-                  : 'bg-background hover:bg-muted border-border'
-              }`}
-            >
-              Time Travel
-            </button>
+      <Tabs
+        value={activeTab}
+        onValueChange={(v) => setActiveTab(v as PanelTab)}
+        className="flex flex-col h-screen bg-background text-foreground overflow-hidden"
+      >
+        {/* Header chrome */}
+        <div className="shrink-0 border-b bg-card">
+          <div className="flex items-center gap-2.5 px-3 pt-2 pb-0">
+            <svg width="16" height="16" viewBox="0 0 18 18" fill="none" className="shrink-0">
+              <rect x="0" y="0" width="18" height="18" rx="4" fill="hsl(var(--primary))" fillOpacity="0.15"/>
+              <circle cx="9" cy="9" r="3.5" stroke="hsl(var(--primary))" strokeWidth="1.5"/>
+              <circle cx="9" cy="9" r="1" fill="hsl(var(--primary))"/>
+              <path d="M9 2v2M9 14v2M2 9h2M14 9h2" stroke="hsl(var(--primary))" strokeWidth="1.5" strokeLinecap="round" opacity="0.6"/>
+            </svg>
+            <span className="text-[13px] font-bold tracking-tight text-primary">APIlot</span>
+            <div className="h-3 w-px bg-border" />
+            <span className="font-mono text-[11px] text-muted-foreground/50">
+              tab&nbsp;{tabId === -1 ? '—' : tabId}
+            </span>
           </div>
-        </div>
 
-        {/* Extension overlay panels */}
-        {showAnalytics && (
-          <div className="border-b bg-card max-h-[60vh] overflow-y-auto shrink-0">
-            <AnalyticsDashboard />
-          </div>
-        )}
-        {showTimeTravel && (
-          <div className="border-b bg-card max-h-[60vh] overflow-y-auto shrink-0">
-            <TimeTravelPanel />
-          </div>
-        )}
-
-        {/* Tabs */}
-        <Tabs defaultValue="monitor" className="flex-1 flex flex-col overflow-hidden px-2 pt-2">
-          <TabsList variant="line" className="shrink-0 w-full justify-start border-b rounded-none">
+          {/* Tab bar */}
+          <TabsList variant="line" className="w-full justify-start bg-transparent rounded-none h-auto p-0 gap-0 overflow-x-auto overflow-y-hidden mt-1">
             {PANEL_TABS.map((tab) => (
-              <TabsTrigger key={tab.value} value={tab.value}>
+              <TabsTrigger
+                key={tab.value}
+                value={tab.value}
+                className="relative rounded-none h-8 px-3.5 text-[12px] font-medium shrink-0 shadow-none bg-transparent border-0
+                  text-muted-foreground hover:text-foreground transition-colors duration-150
+                  data-[state=active]:text-primary data-[state=active]:font-semibold data-[state=active]:bg-transparent
+                  after:absolute after:bottom-0 after:left-0 after:right-0 after:h-[2px] after:rounded-t after:bg-transparent
+                  data-[state=active]:after:bg-primary"
+              >
                 {tab.label}
               </TabsTrigger>
             ))}
           </TabsList>
+        </div>
 
-          <TabsContent value="monitor" className="flex-1 overflow-hidden flex flex-col mt-0 pt-2">
-            <MonitorTab />
-          </TabsContent>
-
-          {PANEL_TABS.filter((t) => t.value !== 'monitor').map((tab) => (
-            <TabsContent
-              key={tab.value}
-              value={tab.value}
-              className="flex-1 overflow-auto"
-            >
-              {tab.value === 'rules' ? (
-                <RulesTab />
-              ) : tab.value === 'settings' ? (
-                <SettingsTab />
-              ) : tab.value === 'schema' ? (
-                <SchemaExplorerTab />
-              ) : tab.value === 'builder' ? (
-                <QueryBuilderTab />
-              ) : null}
-            </TabsContent>
-          ))}
-        </Tabs>
-      </div>
+        <TabsContent value="monitor" className="flex-1 overflow-hidden flex flex-col mt-0">
+          <MonitorTab />
+        </TabsContent>
+        <TabsContent value="rules" className="flex-1 overflow-auto mt-0">
+          <RulesTab />
+        </TabsContent>
+        <TabsContent value="settings" className="flex-1 overflow-auto mt-0">
+          <SettingsTab />
+        </TabsContent>
+        <TabsContent value="analytics" className="flex-1 overflow-auto mt-0">
+          <AnalyticsDashboard />
+        </TabsContent>
+        <TabsContent value="timetravel" className="flex-1 overflow-auto mt-0">
+          <TimeTravelPanel />
+        </TabsContent>
+        <TabsContent value="schema" className="flex-1 overflow-auto mt-0">
+          <SchemaExplorerTab />
+        </TabsContent>
+        <TabsContent value="builder" className="flex-1 overflow-auto mt-0">
+          <QueryBuilderTab />
+        </TabsContent>
+      </Tabs>
 
       <Toaster />
       <AIMockDialog />
@@ -236,28 +225,3 @@ export function PanelApp({ tabId }: PanelAppProps) {
   );
 }
 
-// ---------------------------------------------------------------------------
-// Placeholder shown in non-implemented tabs
-// ---------------------------------------------------------------------------
-
-function ComingSoon({ tabLabel }: { tabLabel: string }) {
-  return (
-    <div className="flex flex-col items-center justify-center h-full gap-3 text-muted-foreground select-none">
-      <svg
-        width="32"
-        height="32"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.5"
-      >
-        <circle cx="12" cy="12" r="10" />
-        <path d="M12 8v4l2 2" />
-      </svg>
-      <div className="text-center space-y-1">
-        <p className="text-sm font-medium text-foreground">{tabLabel}</p>
-        <p className="text-xs">Coming soon</p>
-      </div>
-    </div>
-  );
-}

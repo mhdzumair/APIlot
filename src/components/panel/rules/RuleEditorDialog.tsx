@@ -103,9 +103,9 @@ export function RuleEditorDialog({
 
   const isEditing = !!editingRuleId && !!editingRule;
 
-  // Populate form when editing an existing rule
+  // Populate form when editing OR pre-filling from a captured request
   useEffect(() => {
-    if (open && isEditing && editingRule) {
+    if (open && editingRule) {
       setForm({
         name: editingRule.name ?? '',
         enabled: editingRule.enabled ?? true,
@@ -133,10 +133,10 @@ export function RuleEditorDialog({
         redirectUrl: editingRule.redirectUrl ?? '',
         redirectPreservePath: editingRule.redirectPreservePath ?? false,
       });
-    } else if (open && !isEditing) {
+    } else if (open && !editingRule) {
       setForm(DEFAULT_FORM);
     }
-  }, [open, isEditing, editingRule]);
+  }, [open, editingRule]);
 
   function set<K extends keyof FormState>(key: K, value: FormState[K]) {
     setForm((prev) => ({ ...prev, [key]: value }));
@@ -246,7 +246,7 @@ export function RuleEditorDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>{isEditing ? 'Edit Rule' : 'Add New Rule'}</DialogTitle>
+          <DialogTitle>{isEditing ? 'Edit Rule' : editingRule ? 'Create Rule from Request' : 'Add New Rule'}</DialogTitle>
         </DialogHeader>
 
         <form onSubmit={handleSave} className="space-y-4 py-2">

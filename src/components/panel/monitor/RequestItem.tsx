@@ -1,14 +1,8 @@
 import * as React from 'react';
+import { useState, useEffect } from 'react';
 import type { LogEntry } from '@/types/requests';
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
 import { RequestDetails } from './RequestDetails';
-import {
-  getOperationDisplayName,
-  getRequestMethod,
-  getStatusVariant,
-  getTimingDisplay,
-} from '@/lib/requestUtils';
+import { getOperationDisplayName, getRequestMethod } from '@/lib/requestUtils';
 import { cn } from '@/lib/utils';
 import { useMonitorStore } from '@/stores/useMonitorStore';
 
@@ -18,116 +12,190 @@ interface RequestItemProps {
   onToggle: () => void;
 }
 
-function StatusBadge({ status }: { status: number | undefined }) {
-  const variant = getStatusVariant(status);
+// ─── Method badge ─────────────────────────────────────────────────────────────
 
-  const classes = {
-    success: 'bg-green-500/15 text-green-700 dark:text-green-400 border-green-500/30',
-    warning: 'bg-yellow-500/15 text-yellow-700 dark:text-yellow-400 border-yellow-500/30',
-    error: 'bg-red-500/15 text-red-700 dark:text-red-400 border-red-500/30',
-    pending: 'bg-muted text-muted-foreground border-border',
-  };
+const METHOD_STYLES: Record<string, string> = {
+  GQL:    'bg-pink-500/15 text-pink-400 ring-1 ring-pink-500/25',
+  GET:    'bg-emerald-500/12 text-emerald-400 ring-1 ring-emerald-500/20',
+  POST:   'bg-blue-500/12 text-blue-400 ring-1 ring-blue-500/20',
+  PUT:    'bg-amber-500/12 text-amber-400 ring-1 ring-amber-500/20',
+  PATCH:  'bg-amber-500/12 text-amber-400 ring-1 ring-amber-500/20',
+  DELETE: 'bg-red-500/12 text-red-400 ring-1 ring-red-500/20',
+  HEAD:   'bg-purple-500/12 text-purple-400 ring-1 ring-purple-500/20',
+  ALL:    'bg-muted text-muted-foreground ring-1 ring-border',
+};
 
+function MethodBadge({ method, type }: { method: string; type: 'graphql' | 'rest' }) {
+  const key = type === 'graphql' ? 'GQL' : method.toUpperCase();
+  const style = METHOD_STYLES[key] ?? METHOD_STYLES['ALL'];
   return (
-    <span
-      className={cn(
-        'inline-flex items-center rounded border px-1.5 py-0.5 text-[10px] font-medium tabular-nums',
-        classes[variant]
-      )}
-    >
-      {status ?? 'Pending'}
+    <span className={cn(
+      'inline-flex items-center justify-center rounded px-1.5 py-px text-[10px] font-bold uppercase shrink-0 w-[34px] font-mono tracking-wide',
+      style
+    )}>
+      {key}
     </span>
   );
 }
 
-function TypeBadge({ type }: { type: 'graphql' | 'rest' }) {
+// ─── Status badge ─────────────────────────────────────────────────────────────
+
+function StatusBadge({ status }: { status: number | undefined }) {
+  if (status === undefined) return null;
+
+  const style =
+    status >= 500 ? 'text-red-400 bg-red-500/10 ring-red-500/25' :
+    status >= 400 ? 'text-red-400 bg-red-500/10 ring-red-500/25' :
+    status >= 300 ? 'text-amber-400 bg-amber-500/10 ring-amber-500/25' :
+    status >= 200 ? 'text-emerald-400 bg-emerald-500/10 ring-emerald-500/25' :
+                    'text-muted-foreground bg-muted ring-border';
+
   return (
-    <Badge
-      variant="outline"
-      className={cn(
-        'text-[9px] px-1 py-0 h-4 font-bold uppercase',
-        type === 'graphql'
-          ? 'border-pink-500/40 text-pink-600 dark:text-pink-400 bg-pink-500/10'
-          : 'border-blue-500/40 text-blue-600 dark:text-blue-400 bg-blue-500/10'
-      )}
-    >
-      {type}
-    </Badge>
+    <span className={cn(
+      'inline-flex items-center rounded px-1.5 py-px text-[10px] font-mono font-medium tabular-nums shrink-0 ring-1',
+      style
+    )}>
+      {status}
+    </span>
   );
 }
+
+// ─── Timing badge ─────────────────────────────────────────────────────────────
+
+function formatDuration(ms: number): string {
+  if (ms < 1000) return `${ms}ms`;
+  if (ms < 60_000) return `${(ms / 1000).toFixed(1)}s`;
+  const m = Math.floor(ms / 60_000);
+  const s = Math.floor((ms % 60_000) / 1000);
+  return `${m}m ${s}s`;
+}
+
+function TimingBadge({ request }: { request: LogEntry }) {
+  const isPending = !request.responseStatus && request.responseTime === undefined && !request.responseError;
+
+  const [elapsed, setElapsed] = useState(() => Date.now() - request.startTime);
+  useEffect(() => {
+    if (!isPending) return;
+    const id = setInterval(() => setElapsed(Date.now() - request.startTime), 250);
+    return () => clearInterval(id);
+  }, [isPending, request.startTime]);
+
+  if (isPending) {
+    return (
+      <span className={cn(
+        'inline-flex items-center gap-1 rounded px-1.5 py-px text-[10px] font-mono font-medium tabular-nums shrink-0',
+        'bg-amber-500/10 text-amber-400 ring-1 ring-amber-500/20 apilot-pending-pulse'
+      )}>
+        {formatDuration(elapsed)}
+      </span>
+    );
+  }
+
+  const ms = request.responseTime;
+  if (ms === undefined) return null;
+
+  const style =
+    ms > 3000 ? 'bg-red-500/10 text-red-400 ring-1 ring-red-500/20' :
+    ms > 1000  ? 'bg-amber-500/10 text-amber-400 ring-1 ring-amber-500/20' :
+                 'bg-emerald-500/10 text-emerald-400 ring-1 ring-emerald-500/20';
+
+  return (
+    <span className={cn(
+      'inline-flex items-center rounded px-1.5 py-px text-[10px] font-mono font-medium tabular-nums shrink-0',
+      style
+    )}>
+      {formatDuration(ms)}
+    </span>
+  );
+}
+
+// ─── RequestItem ──────────────────────────────────────────────────────────────
 
 export function RequestItem({ request, isExpanded, onToggle }: RequestItemProps) {
   const operationName = getOperationDisplayName(request);
   const method = getRequestMethod(request);
-  const timing = getTimingDisplay(request);
   const hasMatchedRules = (request.matchedRules?.length ?? 0) > 0;
-  const timestamp = new Date(request.timestamp).toLocaleTimeString();
+  const timestamp = new Date(request.timestamp).toLocaleTimeString([], {
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+  });
   const setAiMockRequest = useMonitorStore((s) => s.setAiMockRequest);
+  const setRuleFromRequest = useMonitorStore((s) => s.setRuleFromRequest);
 
   return (
-    <div
-      className={cn(
-        'border-b last:border-b-0 text-xs',
-        hasMatchedRules && 'bg-amber-500/5'
-      )}
-    >
-      {/* Request header row — clickable to toggle details */}
+    <div className={cn(
+      'border-b border-border/50 last:border-b-0 group/row',
+      hasMatchedRules && 'bg-amber-500/[0.04]',
+      isExpanded && 'bg-muted/30'
+    )}>
+      {/* Row */}
       <div
-        className="flex items-start gap-2 px-3 py-2 hover:bg-muted/40 cursor-pointer select-none"
+        className={cn(
+          'flex items-center gap-2 px-2.5 py-2 cursor-pointer select-none',
+          'hover:bg-muted/25 transition-colors duration-100'
+        )}
         onClick={onToggle}
         role="button"
         aria-expanded={isExpanded}
       >
-        {/* Left: type badge + operation name */}
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-1.5 flex-wrap">
-            <TypeBadge type={request.requestType} />
-            <span className="font-medium truncate max-w-[200px]" title={operationName}>
+        {/* Timestamp */}
+        <span className="font-mono text-[11px] text-muted-foreground shrink-0 tabular-nums w-[64px]">
+          {timestamp}
+        </span>
+
+        {/* Method */}
+        <MethodBadge method={method} type={request.requestType} />
+
+        {/* Name + URL */}
+        <div className="flex-1 min-w-0 leading-none">
+          <div className="flex items-center gap-1.5 min-w-0">
+            <span className={cn(
+              'text-[12px] font-medium truncate',
+              isExpanded ? 'text-foreground' : 'text-foreground/85'
+            )} title={operationName}>
               {operationName}
             </span>
             {hasMatchedRules && (
               <span
-                className="text-amber-600 dark:text-amber-400"
+                className="text-amber-400/80 shrink-0 text-[10px]"
                 title={`Matched rules: ${request.matchedRules!.join(', ')}`}
               >
-                &#x25C6;
+                ◆
               </span>
             )}
           </div>
-          <div className="flex items-center gap-2 mt-0.5 text-muted-foreground">
-            <span className="font-mono">{method}</span>
-            <span className="tabular-nums">{timing}</span>
-            <span>{timestamp}</span>
+          <div className="text-[11px] text-muted-foreground truncate mt-px font-mono" title={request.url}>
+            {request.url}
           </div>
         </div>
 
-        {/* Right: status + action buttons */}
-        <div className="flex items-center gap-1.5 shrink-0 mt-0.5" onClick={(e) => e.stopPropagation()}>
+        {/* Right actions — visible on hover */}
+        <div
+          className="flex items-center gap-1.5 shrink-0 ml-1"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <TimingBadge request={request} />
           <StatusBadge status={request.responseStatus} />
-          <Button
-            variant="outline"
-            size="sm"
-            className="h-5 px-1.5 text-[10px]"
-            title="Create mock rule from this request"
-            onClick={(e) => {
-              e.stopPropagation();
-              // Rule creation will be wired in a future phase
-            }}
-          >
-            + Rule
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            className="h-5 px-1.5 text-[10px]"
-            title="Generate AI mock"
-            onClick={(e) => {
-              e.stopPropagation();
-              setAiMockRequest(request);
-            }}
-          >
-            AI Mock
-          </Button>
+
+          {/* Action buttons — shown on row hover */}
+          <div className="flex items-center gap-1 opacity-0 group-hover/row:opacity-100 transition-opacity duration-100">
+            <button
+              className="h-5 px-1.5 rounded text-[10px] font-medium text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-colors border border-border/50 hover:border-border"
+              title="Create rule from this request"
+              onClick={() => setRuleFromRequest(request)}
+            >
+              + Rule
+            </button>
+            <button
+              className="h-5 px-1.5 rounded text-[10px] font-medium text-primary/70 hover:text-primary hover:bg-primary/10 transition-colors border border-primary/20 hover:border-primary/40"
+              title="Generate AI mock"
+              onClick={() => setAiMockRequest(request)}
+            >
+              AI
+            </button>
+          </div>
         </div>
       </div>
 
