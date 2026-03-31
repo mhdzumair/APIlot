@@ -7,6 +7,7 @@ import { sendMsg } from '@/lib/messaging';
 import type { BackgroundToDevToolsMessage } from '@/types/messages';
 import { useMonitorStore } from '@/stores/useMonitorStore';
 import { useRulesStore } from '@/stores/useRulesStore';
+import { useBuilderStore } from '@/stores/useBuilderStore';
 import { ThemeProvider } from './ThemeProvider';
 import { MonitorTab } from './tabs/MonitorTab';
 import { RulesTab } from './tabs/RulesTab';
@@ -48,10 +49,21 @@ export function PanelApp({ tabId }: PanelAppProps) {
   const setPendingNewRule = useRulesStore((s) => s.setPendingNewRule);
   const [activeTab, setActiveTab] = useState<PanelTab>('monitor');
 
+  const pendingNavigate = useBuilderStore((s) => s.pendingNavigateToBuilder);
+  const setPendingNavigateToBuilder = useBuilderStore((s) => s.setPendingNavigateToBuilder);
+
   // Clear pendingNewRule if it was set via tab switching (legacy - no longer needed)
   useEffect(() => {
     if (pendingNewRule) setPendingNewRule(null);
   }, [pendingNewRule, setPendingNewRule]);
+
+  // Navigate to builder tab when Schema Explorer triggers it
+  useEffect(() => {
+    if (pendingNavigate) {
+      setActiveTab('builder');
+      setPendingNavigateToBuilder(false);
+    }
+  }, [pendingNavigate, setPendingNavigateToBuilder]);
 
   // ------------------------------------------------------------------
   // Set tabId in monitor store + signal DevTools open/closed to background

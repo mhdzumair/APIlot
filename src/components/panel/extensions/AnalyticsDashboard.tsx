@@ -1,11 +1,11 @@
 import * as React from 'react';
-import { useEffect, useRef, useCallback } from 'react';
+import { useRef, useCallback } from 'react';
 import Chart from 'chart.js/auto';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { sendMsg } from '@/lib/messaging';
-import { useAnalyticsStore } from '@/stores/useAnalyticsStore';
-import type { PerformanceMetrics, PerformanceRecommendation } from '@/services/PerformanceTracker';
+import { useMonitorStore } from '@/stores/useMonitorStore';
+import type { LogEntry } from '@/types/requests';
+import type { PerformanceMetrics, PerformanceRecommendation, SlowRequest, TimeSeriesPoint } from '@/services/PerformanceTracker';
 
 function recommendationBadgeClass(type: PerformanceRecommendation['type']): string {
   switch (type) {
@@ -48,7 +48,7 @@ function ResponseTimeChart({ metrics }: { metrics: PerformanceMetrics }) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const chartRef = useRef<Chart | null>(null);
 
-  useEffect(() => {
+  React.useEffect(() => {
     if (!canvasRef.current) return;
     const ctx = canvasRef.current.getContext('2d');
     if (!ctx) return;
@@ -128,58 +128,100 @@ function ResponseTimeChart({ metrics }: { metrics: PerformanceMetrics }) {
   );
 }
 
+// Derive PerformanceMetrics from the live monitor request log
+function computeMetrics(requestLog: LogEntry[]): PerformanceMetrics | null {
+  if (requestLog.length === 0) return null;
+
+  const completed = requestLog.filter(
+    (e) => e.responseTime !== undefined || e.responseError !== undefined
+  );
+
+  const responseTimes = completed
+    .map((e) => e.responseTime)
+    .filter((t): t is number => t !== undefined);
+
+  const isError = (e: LogEntry) =>
+    !!e.responseError || (e.responseStatus !== undefined && e.responseStatus >= 400);
+
+  const successCount = completed.filter((e) => !isError(e)).length;
+  const errorCount = completed.length - successCount;
+
+  const totalResponseTime = responseTimes.reduce((a, b) => a + b, 0);
+  const avgResponseTime =
+    responseTimes.length > 0 ? Math.round(totalResponseTime / responseTimes.length) : 0;
+
+  const slowestRequests: SlowRequest[] = [...completed]
+    .filter((e) => e.responseTime !== undefined)
+    .sort((a, b) => (b.responseTime ?? 0) - (a.responseTime ?? 0))
+    .slice(0, 5)
+    .map((e) => ({
+      id: e.id,
+      requestType: e.requestType,
+      operationName: e.operationName ?? e.endpoint,
+      url: e.url,
+      responseTime: e.responseTime!,
+      status: isError(e) ? 'error' : 'success',
+      httpStatus: e.responseStatus,
+      timestamp: e.timestamp,
+    }));
+
+  const timeSeriesData: TimeSeriesPoint[] = completed
+    .filter((e) => e.responseTime !== undefined)
+    .slice(-50)
+    .map((e) => ({
+      timestamp: new Date(e.endTime ?? e.startTime).toISOString(),
+      responseTime: e.responseTime!,
+      status: isError(e) ? 'error' : 'success',
+      requestType: e.requestType,
+    }));
+
+  const requestsByStatus: Record<string | number, number> = {};
+  for (const e of completed) {
+    const key = e.responseStatus ?? 'unknown';
+    requestsByStatus[key] = (requestsByStatus[key] ?? 0) + 1;
+  }
+
+  const timeSpan =
+    requestLog.length > 1
+      ? (requestLog[requestLog.length - 1].startTime - requestLog[0].startTime) / 60_000
+      : 1;
+  const requestsPerMinute =
+    timeSpan > 0 ? Math.round((requestLog.length / timeSpan) * 10) / 10 : 0;
+
+  const activeRequests = requestLog.filter(
+    (e) => e.responseTime === undefined && !e.responseError
+  ).length;
+
+  return {
+    avgResponseTime,
+    minResponseTime: responseTimes.length > 0 ? Math.min(...responseTimes) : 0,
+    maxResponseTime: responseTimes.length > 0 ? Math.max(...responseTimes) : 0,
+    totalRequests: requestLog.length,
+    successRate:
+      completed.length > 0 ? Math.round((successCount / completed.length) * 100) : 100,
+    errorRate:
+      completed.length > 0 ? Math.round((errorCount / completed.length) * 100) : 0,
+    requestsPerMinute,
+    slowestRequests,
+    requestsByType: {
+      graphql: requestLog.filter((e) => e.requestType === 'graphql').length,
+      rest: requestLog.filter((e) => e.requestType === 'rest').length,
+    },
+    requestsByStatus,
+    timeSeriesData,
+    activeRequests,
+  };
+}
+
 export function AnalyticsDashboard() {
-  const { metrics, setMetrics } = useAnalyticsStore();
+  const requestLog = useMonitorStore((s) => s.requestLog);
+  const clearLog = useMonitorStore((s) => s.clearLog);
 
-  const loadMetrics = useCallback(async () => {
-    try {
-      const response = await sendMsg({ type: 'GET_PERFORMANCE_METRICS' });
-      if (response?.success) {
-        // The background returns PerformanceData; we map it to PerformanceMetrics shape
-        // by treating the aggregates fields as metrics summary
-        const data = response.metrics;
-        const aggr = data?.aggregates;
-        if (!aggr) return;
-        const total = aggr.totalRequests ?? 0;
-        const successRate = total > 0 ? Math.round((aggr.successCount / total) * 100) : 100;
-        const errorRate = total > 0 ? Math.round((aggr.errorCount / total) * 100) : 0;
-        const avgResponseTime =
-          total > 0 ? Math.round(aggr.totalResponseTime / total) : 0;
+  const metrics = React.useMemo(() => computeMetrics(requestLog), [requestLog]);
 
-        // Build a PerformanceMetrics-compatible object from PerformanceData
-        const mapped: PerformanceMetrics = {
-          avgResponseTime,
-          minResponseTime: 0,
-          maxResponseTime: 0,
-          totalRequests: total,
-          successRate,
-          errorRate,
-          requestsPerMinute: 0,
-          slowestRequests: [],
-          requestsByType: { graphql: 0, rest: 0 },
-          requestsByStatus: {},
-          timeSeriesData: [],
-          activeRequests: 0,
-        };
-        setMetrics(mapped);
-      }
-    } catch (err) {
-      console.error('[AnalyticsDashboard] Failed to load metrics:', err);
-    }
-  }, [setMetrics]);
-
-  useEffect(() => {
-    loadMetrics();
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
-
-  const handleClearData = useCallback(async () => {
-    try {
-      await sendMsg({ type: 'CLEAR_PERFORMANCE_DATA' });
-      setMetrics(null);
-    } catch (err) {
-      console.error('[AnalyticsDashboard] Failed to clear data:', err);
-    }
-  }, [setMetrics]);
+  const handleClearData = useCallback(() => {
+    clearLog();
+  }, [clearLog]);
 
   const handleExport = useCallback(() => {
     if (!metrics) return;
@@ -219,9 +261,6 @@ export function AnalyticsDashboard() {
           <p className="text-xs text-muted-foreground">API performance metrics</p>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline" size="sm" onClick={loadMetrics} className="h-7 text-xs">
-            Refresh
-          </Button>
           <Button variant="outline" size="sm" onClick={handleExport} disabled={!metrics} className="h-7 text-xs">
             Export
           </Button>

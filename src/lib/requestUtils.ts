@@ -32,6 +32,18 @@ export function getOperationDisplayName(request: LogEntry): string {
     return 'Anonymous Operation';
   }
 
+  // Static asset — show filename
+  if (request.requestType === 'static') {
+    if (request.operationName) return request.operationName;
+    try {
+      const pathname = new URL(request.url).pathname;
+      const segments = pathname.split('/').filter(Boolean);
+      return segments[segments.length - 1] || pathname;
+    } catch {
+      return request.url;
+    }
+  }
+
   // REST request
   const method = request.method ?? 'GET';
   const path = request.path ?? request.endpoint ?? new URL(request.url).pathname;
@@ -46,6 +58,13 @@ export function getRequestMethod(request: LogEntry): string {
     return 'POST';
   }
   return request.method ?? 'GET';
+}
+
+/**
+ * Returns true if the entry is a static asset (JS, CSS, HTML, etc.)
+ */
+export function isStaticEntry(request: LogEntry): boolean {
+  return request.requestType === 'static';
 }
 
 /**

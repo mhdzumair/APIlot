@@ -64,6 +64,7 @@ interface FormState {
   // Redirect action
   redirectUrl: string;
   redirectPreservePath: boolean;
+  redirectFilenameOnly: boolean;
 }
 
 const DEFAULT_FORM: FormState = {
@@ -85,6 +86,7 @@ const DEFAULT_FORM: FormState = {
   delayMs: '1000',
   redirectUrl: '',
   redirectPreservePath: false,
+  redirectFilenameOnly: false,
 };
 
 // ---------------------------------------------------------------------------
@@ -132,6 +134,7 @@ export function RuleEditorDialog({
         delayMs: editingRule.delay != null ? String(editingRule.delay) : '1000',
         redirectUrl: editingRule.redirectUrl ?? '',
         redirectPreservePath: editingRule.redirectPreservePath ?? false,
+        redirectFilenameOnly: editingRule.redirectFilenameOnly ?? false,
       });
     } else if (open && !editingRule) {
       setForm(DEFAULT_FORM);
@@ -185,6 +188,12 @@ export function RuleEditorDialog({
       }
     }
 
+    // Static-specific: path/endpoint used for DNR regexFilter construction
+    if (form.requestType === 'static') {
+      if (form.restPath.trim()) ruleData.restPath = form.restPath.trim();
+      if (form.restEndpoint.trim()) ruleData.restEndpoint = form.restEndpoint.trim();
+    }
+
     // Action-specific
     if (form.action === 'mock') {
       try {
@@ -206,7 +215,9 @@ export function RuleEditorDialog({
         return;
       }
       ruleData.redirectUrl = form.redirectUrl.trim();
-      ruleData.redirectPreservePath = form.redirectPreservePath;
+      ruleData.redirectFilenameOnly = form.redirectFilenameOnly;
+      // redirectPreservePath and redirectFilenameOnly are mutually exclusive
+      ruleData.redirectPreservePath = form.redirectFilenameOnly ? false : form.redirectPreservePath;
     }
 
     setSaving(true);
@@ -241,6 +252,7 @@ export function RuleEditorDialog({
 
   const showGraphQLFields = form.requestType === 'graphql' || form.requestType === 'both';
   const showRESTFields = form.requestType === 'rest' || form.requestType === 'both';
+  const isStaticType = form.requestType === 'static';
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -281,22 +293,64 @@ export function RuleEditorDialog({
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="graphql">GraphQL</SelectItem>
-                <SelectItem value="rest">REST</SelectItem>
-                <SelectItem value="both">Both</SelectItem>
+                <SelectItem value="rest">REST / API</SelectItem>
+                <SelectItem value="both">Both (GraphQL + REST)</SelectItem>
+                <SelectItem value="static">Static Asset (JS / CSS / images)</SelectItem>
               </SelectContent>
             </Select>
+            {isStaticType && (
+              <p className="text-[11px] text-muted-foreground leading-relaxed">
+                Static rules are applied via network-level interception (declarativeNetRequest on Chrome, webRequest on Firefox). They work for{' '}
+                <span className="font-mono">{'<script>'}</span>,{' '}
+                <span className="font-mono">{'<link>'}</span>, and direct asset fetches.
+                Only <strong>Redirect</strong> and <strong>Block</strong> actions are supported.
+              </p>
+            )}
           </div>
 
           {/* URL pattern (common) */}
           <div className="space-y-1.5">
-            <Label htmlFor="rule-url-pattern">URL / Host Pattern</Label>
+            <Label htmlFor="rule-url-pattern">
+              {isStaticType ? 'Host / Domain Pattern' : 'URL / Host Pattern'}
+            </Label>
             <Input
               id="rule-url-pattern"
-              placeholder="e.g. api.example.com or /regex/"
+              placeholder={
+                isStaticType
+                  ? 'e.g. cdn.example.com or *.example.com'
+                  : 'e.g. api.example.com or /regex/'
+              }
               value={form.urlPattern}
               onChange={(e) => set('urlPattern', e.target.value)}
             />
           </div>
+
+          {/* Static-specific: path / endpoint for targeting specific files */}
+          {isStaticType && (
+            <>
+              <div className="space-y-1.5">
+                <Label htmlFor="rule-static-path">Path Pattern</Label>
+                <Input
+                  id="rule-static-path"
+                  placeholder="e.g. /static/js/* or /assets/vendor/*"
+                  value={form.restPath}
+                  onChange={(e) => set('restPath', e.target.value)}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="rule-static-endpoint">
+                  Filename Pattern{' '}
+                  <span className="text-xs text-muted-foreground">(last path segment)</span>
+                </Label>
+                <Input
+                  id="rule-static-endpoint"
+                  placeholder="e.g. app.bundle.js or *.js"
+                  value={form.restEndpoint}
+                  onChange={(e) => set('restEndpoint', e.target.value)}
+                />
+              </div>
+            </>
+          )}
 
           {/* GraphQL-specific fields */}
           {showGraphQLFields && (
@@ -409,17 +463,26 @@ export function RuleEditorDialog({
           {/* Action */}
           <div className="space-y-1.5">
             <Label htmlFor="rule-action">Action</Label>
-            <Select value={form.action} onValueChange={(v) => set('action', v as RuleAction)}>
+            <Select
+              value={form.action}
+              onValueChange={(v) => {
+                set('action', v as RuleAction);
+                // Reset to redirect when switching to static if action is incompatible
+                if (isStaticType && v !== 'redirect' && v !== 'block') {
+                  set('action', 'redirect');
+                }
+              }}
+            >
               <SelectTrigger id="rule-action">
                 <SelectValue placeholder="Select action" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="mock">Mock Response</SelectItem>
+                {!isStaticType && <SelectItem value="mock">Mock Response</SelectItem>}
                 <SelectItem value="block">Block</SelectItem>
-                <SelectItem value="delay">Delay</SelectItem>
-                <SelectItem value="modify">Modify</SelectItem>
+                {!isStaticType && <SelectItem value="delay">Delay</SelectItem>}
+                {!isStaticType && <SelectItem value="modify">Modify</SelectItem>}
                 <SelectItem value="redirect">Redirect</SelectItem>
-                <SelectItem value="passthrough">Passthrough</SelectItem>
+                {!isStaticType && <SelectItem value="passthrough">Passthrough</SelectItem>}
               </SelectContent>
             </Select>
           </div>
@@ -475,22 +538,50 @@ export function RuleEditorDialog({
           {form.action === 'redirect' && (
             <>
               <div className="space-y-1.5">
-                <Label htmlFor="rule-redirect-url">Redirect URL</Label>
+                <Label htmlFor="rule-redirect-url">Redirect Target URL</Label>
                 <Input
                   id="rule-redirect-url"
-                  placeholder="https://mock.example.com/api"
+                  placeholder={
+                    isStaticType
+                      ? 'https://localhost:3000 (origin only for filename-only mode)'
+                      : 'https://mock.example.com/api'
+                  }
                   value={form.redirectUrl}
                   onChange={(e) => set('redirectUrl', e.target.value)}
                 />
               </div>
-              <div className="flex items-center gap-3">
+
+              {/* Filename-only redirect */}
+              <div className="flex items-start gap-3">
                 <Switch
-                  id="rule-redirect-preserve"
-                  checked={form.redirectPreservePath}
-                  onCheckedChange={(v) => set('redirectPreservePath', v)}
+                  id="rule-redirect-filename-only"
+                  checked={form.redirectFilenameOnly}
+                  onCheckedChange={(v) => {
+                    set('redirectFilenameOnly', v);
+                    if (v) set('redirectPreservePath', false);
+                  }}
                 />
-                <Label htmlFor="rule-redirect-preserve">Preserve source path</Label>
+                <div>
+                  <Label htmlFor="rule-redirect-filename-only">Filename-only redirect</Label>
+                  <p className="text-[11px] text-muted-foreground mt-0.5 leading-relaxed">
+                    Keep only the filename from the source URL and append it to the target origin.{' '}
+                    <span className="font-mono">cdn.com/v2/app.bundle.js</span> →{' '}
+                    <span className="font-mono">localhost:3000/app.bundle.js</span>
+                  </p>
+                </div>
               </div>
+
+              {/* Preserve path — hidden when filename-only is on */}
+              {!form.redirectFilenameOnly && (
+                <div className="flex items-center gap-3">
+                  <Switch
+                    id="rule-redirect-preserve"
+                    checked={form.redirectPreservePath}
+                    onCheckedChange={(v) => set('redirectPreservePath', v)}
+                  />
+                  <Label htmlFor="rule-redirect-preserve">Preserve source path</Label>
+                </div>
+              )}
             </>
           )}
 

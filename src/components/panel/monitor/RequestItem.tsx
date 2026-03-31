@@ -25,7 +25,47 @@ const METHOD_STYLES: Record<string, string> = {
   ALL:    'bg-muted text-muted-foreground ring-1 ring-border',
 };
 
-function MethodBadge({ method, type }: { method: string; type: 'graphql' | 'rest' }) {
+// Extended method styles for static assets
+const STATIC_EXT_STYLES: Record<string, string> = {
+  js:   'bg-yellow-500/15 text-yellow-400 ring-1 ring-yellow-500/25',
+  mjs:  'bg-yellow-500/15 text-yellow-400 ring-1 ring-yellow-500/25',
+  jsx:  'bg-yellow-500/15 text-yellow-400 ring-1 ring-yellow-500/25',
+  ts:   'bg-blue-500/15 text-blue-300 ring-1 ring-blue-500/25',
+  tsx:  'bg-blue-500/15 text-blue-300 ring-1 ring-blue-500/25',
+  css:  'bg-purple-500/15 text-purple-400 ring-1 ring-purple-500/25',
+  html: 'bg-orange-500/15 text-orange-400 ring-1 ring-orange-500/25',
+  htm:  'bg-orange-500/15 text-orange-400 ring-1 ring-orange-500/25',
+  json: 'bg-emerald-500/15 text-emerald-400 ring-1 ring-emerald-500/25',
+  svg:  'bg-pink-500/15 text-pink-400 ring-1 ring-pink-500/25',
+  xml:  'bg-muted text-muted-foreground ring-1 ring-border',
+  wasm: 'bg-red-500/15 text-red-400 ring-1 ring-red-500/25',
+};
+
+function getStaticBadge(url: string): { label: string; style: string } {
+  try {
+    const pathname = new URL(url).pathname.toLowerCase();
+    const ext = pathname.split('.').pop() ?? '';
+    return {
+      label: ext.slice(0, 4).toUpperCase() || 'ASSET',
+      style: STATIC_EXT_STYLES[ext] ?? 'bg-muted text-muted-foreground ring-1 ring-border',
+    };
+  } catch {
+    return { label: 'ASSET', style: 'bg-muted text-muted-foreground ring-1 ring-border' };
+  }
+}
+
+function MethodBadge({ method, type, url }: { method: string; type: 'graphql' | 'rest' | 'static'; url: string }) {
+  if (type === 'static') {
+    const { label, style } = getStaticBadge(url);
+    return (
+      <span className={cn(
+        'inline-flex items-center justify-center rounded px-1 py-px text-[10px] font-bold uppercase shrink-0 w-[34px] font-mono tracking-wide',
+        style
+      )}>
+        {label}
+      </span>
+    );
+  }
   const key = type === 'graphql' ? 'GQL' : method.toUpperCase();
   const style = METHOD_STYLES[key] ?? METHOD_STYLES['ALL'];
   return (
@@ -146,7 +186,7 @@ export function RequestItem({ request, isExpanded, onToggle }: RequestItemProps)
         </span>
 
         {/* Method */}
-        <MethodBadge method={method} type={request.requestType} />
+        <MethodBadge method={method} type={request.requestType} url={request.url} />
 
         {/* Name + URL */}
         <div className="flex-1 min-w-0 leading-none">

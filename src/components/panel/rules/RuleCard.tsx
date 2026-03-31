@@ -19,6 +19,12 @@ function requestTypeBadgeVariant(
   return 'outline';
 }
 
+function requestTypeLabel(requestType: ApiRule['requestType']): string {
+  if (requestType === 'static') return 'static asset';
+  if (requestType === 'both') return 'gql + rest';
+  return requestType;
+}
+
 function actionLabel(rule: ApiRule): string {
   switch (rule.action) {
     case 'mock':
@@ -103,19 +109,24 @@ export function RuleCard({ ruleId, rule, onEdit, onDelete }: RuleCardProps) {
       {/* Badges row */}
       <div className="flex flex-wrap items-center gap-1.5">
         <Badge variant={requestTypeBadgeVariant(rule.requestType)} className="capitalize text-[11px]">
-          {rule.requestType}
+          {requestTypeLabel(rule.requestType)}
         </Badge>
         <Badge variant="outline" className="text-[11px]">
           {actionLabel(rule)}
         </Badge>
-        {rule.requestType !== 'rest' && rule.operationName && (
+        {rule.requestType !== 'rest' && rule.requestType !== 'static' && rule.operationName && (
           <Badge variant="outline" className="text-[11px] font-mono">
             {rule.operationName}
           </Badge>
         )}
-        {rule.requestType === 'rest' && rule.httpMethod && rule.httpMethod !== 'ALL' && (
+        {(rule.requestType === 'rest') && rule.httpMethod && rule.httpMethod !== 'ALL' && (
           <Badge variant="outline" className="text-[11px] font-mono uppercase">
             {rule.httpMethod}
+          </Badge>
+        )}
+        {rule.requestType === 'static' && rule.redirectFilenameOnly && (
+          <Badge variant="outline" className="text-[11px]">
+            filename-only
           </Badge>
         )}
       </div>

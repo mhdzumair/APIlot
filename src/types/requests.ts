@@ -8,7 +8,7 @@ export type RequestSource = 'injectedScript' | 'webRequest';
 
 export interface RequestData {
   requestId?: string;
-  requestType: 'graphql' | 'rest';
+  requestType: 'graphql' | 'rest' | 'static';
   url: string;
   timestamp?: string;
   // GraphQL fields
@@ -27,7 +27,7 @@ export interface RequestData {
 
 export interface ResponseData {
   requestId: string;
-  requestType?: 'graphql' | 'rest';
+  requestType?: 'graphql' | 'rest' | 'static';
   response?: unknown;
   status?: number;
   statusText?: string;
@@ -40,7 +40,7 @@ export interface LogEntry {
   id: string;
   tabId: number;
   timestamp: string;
-  requestType: 'graphql' | 'rest';
+  requestType: 'graphql' | 'rest' | 'static';
   url: string;
   source?: RequestSource;
 

@@ -107,9 +107,17 @@ export function RulesTab() {
 
     try {
       const text = await file.text();
-      const parsed: Array<[string, ApiRule]> = JSON.parse(text);
+      const raw = JSON.parse(text);
 
-      if (!Array.isArray(parsed)) {
+      // Normalise two supported formats into Array<[id, rule]>:
+      //  1. Current format: [[id, rule], ...] (Map.entries() array)
+      //  2. Legacy v2 format: { version, rules: [rule, ...] } envelope
+      let parsed: Array<[string, ApiRule]>;
+      if (Array.isArray(raw)) {
+        parsed = raw as Array<[string, ApiRule]>;
+      } else if (raw && typeof raw === 'object' && Array.isArray(raw.rules)) {
+        parsed = (raw.rules as ApiRule[]).map((r) => [r.id ?? '', r]);
+      } else {
         toast.error('Invalid file format. Expected a JSON array of rules.');
         return;
       }

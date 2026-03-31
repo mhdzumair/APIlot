@@ -10,12 +10,29 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { useSchemaStore } from '@/stores/useSchemaStore';
+import { useBuilderStore } from '@/stores/useBuilderStore';
 import { EndpointSelector } from '../schema/EndpointSelector';
 import { SchemaViewer } from '../schema/SchemaViewer';
 import { fetchIntrospection } from '@/lib/introspection';
 import type { LogEntry } from '@/types/requests';
+import type { SchemaField } from '@/stores/useSchemaStore';
 
 export function SchemaExplorerTab() {
+  const addOperationTab = useBuilderStore((s) => s.addOperationTab);
+  const setPendingNavigateToBuilder = useBuilderStore((s) => s.setPendingNavigateToBuilder);
+
+  const handleBuildOperation = (op: SchemaField, opType: 'query' | 'mutation' | 'subscription') => {
+    addOperationTab({
+      id: `${opType}-${op.name}`,
+      name: op.name,
+      operationType: opType,
+      selectedArguments: [],
+      argumentValues: {},
+      selectedSubFields: [],
+    });
+    setPendingNavigateToBuilder(true);
+  };
+
   const selectedEndpoint = useSchemaStore((s) => s.selectedEndpoint);
   const schema = useSchemaStore((s) => s.schema);
   const loading = useSchemaStore((s) => s.loading);
@@ -203,7 +220,7 @@ export function SchemaExplorerTab() {
       {/* Schema viewer */}
       <div className="flex-1 overflow-hidden px-3 py-2">
         {schema ? (
-          <SchemaViewer schema={schema} />
+          <SchemaViewer schema={schema} onBuildOperation={handleBuildOperation} />
         ) : (
           <div className="flex flex-col items-center justify-center h-full gap-2 text-muted-foreground">
             {loading ? (

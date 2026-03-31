@@ -22,6 +22,15 @@ export interface RequestMatchData {
   variables?: unknown;
 }
 
+/**
+ * Returns true when the rule is exclusively for static assets (JS/CSS/etc.).
+ * Static rules are applied via declarativeNetRequest / webRequest blocking only —
+ * they never match requests captured by the injected fetch/XHR interceptor.
+ */
+export function isStaticRule(rule: ApiRule): boolean {
+  return rule.requestType === 'static';
+}
+
 // ---------------------------------------------------------------------------
 // Internal helpers
 // ---------------------------------------------------------------------------
@@ -461,6 +470,12 @@ export function matchesRule(rule: ApiRule, requestData: RequestMatchData): boole
   const url = requestData.url;
   const requestType = requestData.requestType;
   const ruleRequestType = rule.requestType ?? 'graphql';
+
+  // Static rules are applied at the network layer (DNR / webRequest) only.
+  // They never match requests captured by the in-page fetch/XHR interceptor.
+  if (ruleRequestType === 'static') {
+    return false;
+  }
 
   if (ruleRequestType !== 'both' && ruleRequestType !== requestType) {
     return false;

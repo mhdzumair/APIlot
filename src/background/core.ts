@@ -36,6 +36,7 @@ interface WebRequestBufferEntry {
   frameId: number;
   parentFrameId: number;
   source: string;
+  urlClass?: 'api' | 'static';
   responseStatus?: number;
   responseStatusText?: string;
   responseHeaders?: unknown;
@@ -161,35 +162,47 @@ export class APITestingCore {
       '/query',
       '/services/',
     ];
+    // Extensions that indicate static assets worth capturing (JS, HTML, etc.)
     const staticExtensions = [
       '.js',
+      '.mjs',
+      '.jsx',
+      '.ts',
+      '.tsx',
       '.css',
-      '.png',
-      '.jpg',
-      '.jpeg',
-      '.gif',
-      '.svg',
-      '.ico',
-      '.woff',
-      '.woff2',
-      '.ttf',
-      '.eot',
-      '.map',
       '.html',
       '.htm',
+      '.json',
+      '.xml',
+      '.svg',
+      '.wasm',
+    ];
+    // Extensions that are truly binary/media — not useful to show in monitor
+    const binaryExtensions = [
+      '.png', '.jpg', '.jpeg', '.gif', '.webp', '.avif', '.bmp',
+      '.ico', '.woff', '.woff2', '.ttf', '.eot', '.otf',
+      '.mp4', '.webm', '.mp3', '.ogg', '.wav',
+      '.zip', '.gz', '.tar', '.pdf',
+      '.map',
     ];
 
-    const isApiRequest = (url: string): boolean => {
-      if (!url) return false;
+    type RequestClass = 'api' | 'static' | null;
+
+    const classifyRequest = (url: string): RequestClass => {
+      if (!url) return null;
       const urlLower = url.toLowerCase();
-      const urlPath = urlLower.split('?')[0];
-      if (staticExtensions.some((ext) => urlPath.endsWith(ext))) return false;
       if (
         urlLower.includes('chrome-extension://') ||
         urlLower.includes('moz-extension://')
-      )
-        return false;
-      return apiPatterns.some((pattern) => urlLower.includes(pattern));
+      ) return null;
+      const urlPath = urlLower.split('?')[0];
+      // Skip binary/media — no value in showing these
+      if (binaryExtensions.some((ext) => urlPath.endsWith(ext))) return null;
+      // Static text assets
+      if (staticExtensions.some((ext) => urlPath.endsWith(ext))) return 'static';
+      // API endpoints
+      if (apiPatterns.some((pattern) => urlLower.includes(pattern))) return 'api';
+      return null;
     };
 
     const wr = webRequest as {
@@ -227,7 +240,8 @@ export class APITestingCore {
         if (!tabState || !tabState.devToolsOpen || !tabState.enabled) {
           return;
         }
-        if (!isApiRequest(details.url as string)) return;
+        const urlClass = classifyRequest(details.url as string);
+        if (!urlClass) return;
 
         const webRequestId = `webreq_${details.requestId}_${details.tabId}`;
 
@@ -243,6 +257,7 @@ export class APITestingCore {
           frameId: details.frameId as number,
           parentFrameId: details.parentFrameId as number,
           source: 'webRequest',
+          urlClass,
         };
 
         const tabId = details.tabId as number;
@@ -354,6 +369,10 @@ export class APITestingCore {
     webRequest: WebRequestBufferEntry,
     tabId: number
   ): boolean {
+    // Static assets (script tags, link tags) are never fired through the injected
+    // fetch/XHR interceptor, so they can never be duplicates of injected entries.
+    if (webRequest.urlClass === 'static') return false;
+
     const tabState = this.adapter.peekTabState(tabId);
     if (!tabState || !tabState.requestLog) return false;
 
@@ -384,7 +403,10 @@ export class APITestingCore {
     request: WebRequestBufferEntry,
     details: Record<string, unknown>
   ): Promise<void> {
-    const requestType = this.detectRequestType(request.url, request.method);
+    const requestType: 'graphql' | 'rest' | 'static' =
+      request.urlClass === 'static'
+        ? 'static'
+        : this.detectRequestType(request.url, request.method);
 
     const logEntry = {
       id: request.webRequestId,
@@ -394,12 +416,15 @@ export class APITestingCore {
       timestamp: request.timestamp,
       startTime: request.startTime,
       responseStatus: request.responseStatus ?? (details.statusCode as number),
+      responseTime: request.responseTime,
       responseTimestamp: new Date().toISOString(),
       endTime: request.endTime,
       source: 'webRequest' as const,
       frameId: request.frameId,
       operationName:
-        requestType === 'rest'
+        requestType === 'static'
+          ? this.getAssetName(request.url)
+          : requestType === 'rest'
           ? this.generateOperationName(request.url, request.method)
           : 'WebRequest',
     };
@@ -428,6 +453,17 @@ export class APITestingCore {
       return 'graphql';
     }
     return 'rest';
+  }
+
+  /** Returns the last path segment of a URL — used as the display name for static assets. */
+  private getAssetName(url: string): string {
+    try {
+      const pathname = new URL(url).pathname;
+      const segments = pathname.split('/').filter(Boolean);
+      return segments[segments.length - 1] || pathname || url;
+    } catch {
+      return url;
+    }
   }
 
   private generateOperationName(url: string, method: string): string {
@@ -856,6 +892,12 @@ export class APITestingCore {
       return;
     }
 
+    const endTime = Date.now();
+    // Peek at existing entry to get startTime so we can include responseTime in the update
+    const tabState = this.adapter.peekTabState(tabId);
+    const existingEntry = tabState?.requestLog?.find((e) => e.id === responseData.requestId);
+    const responseTime = endTime - (existingEntry?.startTime ?? endTime);
+
     const updatedEntry = await this.adapter.updateRequestLog(
       tabId,
       responseData.requestId,
@@ -866,13 +908,13 @@ export class APITestingCore {
         responseHeaders: responseData.headers,
         responseError: responseData.error,
         responseTimestamp: responseData.timestamp,
-        endTime: Date.now(),
+        endTime,
+        responseTime,
       }
     );
 
     if (updatedEntry) {
-      const responseTime =
-        updatedEntry.endTime! - (updatedEntry.startTime || updatedEntry.endTime!);
+      // responseTime already computed above — reuse it for performance tracking
 
       this.trackPerformance(updatedEntry, {
         ...responseData,

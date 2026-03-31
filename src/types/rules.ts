@@ -4,7 +4,7 @@
  * src-legacy/shared/apilot-rule-match.js matching logic.
  */
 
-export type RequestType = 'graphql' | 'rest' | 'both';
+export type RequestType = 'graphql' | 'rest' | 'both' | 'static';
 export type RuleAction = 'mock' | 'delay' | 'block' | 'modify' | 'passthrough' | 'redirect';
 
 export interface ApiRule {
