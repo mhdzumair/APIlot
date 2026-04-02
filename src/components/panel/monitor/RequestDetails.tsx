@@ -20,18 +20,17 @@ interface Section {
   title: string;
   content: string;
   language: 'json' | 'graphql';
-  defaultOpen?: boolean;
 }
 
 function CollapsibleSection({
   title,
   content,
   language = 'json',
-  defaultOpen = false,
   forceOpen = false,
   searchTerm = '',
-}: Section & { forceOpen?: boolean; searchTerm?: string }) {
-  const [open, setOpen] = useState(defaultOpen);
+  onHover,
+}: Section & { forceOpen?: boolean; searchTerm?: string; onHover?: (title: string | null) => void }) {
+  const [open, setOpen] = useState(false);
 
   // Force open when a search term matches this section
   useEffect(() => {
@@ -53,7 +52,11 @@ function CollapsibleSection({
   const hasMatch = matchCount > 0;
 
   return (
-    <div className={cn('border rounded mb-2', hasMatch && searchTerm && 'border-primary/40')}>
+    <div
+      className={cn('border rounded mb-2', hasMatch && searchTerm && 'border-primary/40')}
+      onMouseEnter={() => onHover?.(title)}
+      onMouseLeave={() => onHover?.(null)}
+    >
       <button
         className="flex w-full items-center justify-between px-3 py-2 text-xs font-medium hover:bg-muted/50 transition-colors"
         onClick={() => setOpen((v) => !v)}
@@ -82,6 +85,8 @@ function CollapsibleSection({
 export function RequestDetails({ request }: RequestDetailsProps) {
   const [searchTerm, setSearchTerm] = useState('');
   const [showSearch, setShowSearch] = useState(false);
+  const [searchScope, setSearchScope] = useState<string | null>(null);
+  const [hoveredSection, setHoveredSection] = useState<string | null>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
 
   const hasHeaders = !!(request.requestHeaders || request.responseHeaders);
@@ -100,26 +105,26 @@ export function RequestDetails({ request }: RequestDetailsProps) {
       ? 'text-yellow-500'
       : 'text-red-500';
 
-  // Ctrl+F within this details panel
+  // Ctrl+F — scope to hovered section if inside one, otherwise all
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
       if ((e.ctrlKey || e.metaKey) && e.key === 'f') {
         e.preventDefault();
         e.stopPropagation();
+        setSearchScope(hoveredSection); // null = all sections
         setShowSearch(true);
-        // Focus on next tick so the input is mounted
         setTimeout(() => searchInputRef.current?.focus(), 0);
       }
       if (e.key === 'Escape' && showSearch) {
         setShowSearch(false);
         setSearchTerm('');
+        setSearchScope(null);
       }
     }
     document.addEventListener('keydown', handleKeyDown, true);
     return () => document.removeEventListener('keydown', handleKeyDown, true);
-  }, [showSearch]);
+  }, [showSearch, hoveredSection]);
 
-  // Build section contents for match checking
   const queryContent = request.query ?? '';
   const variablesContent = request.variables ? safeStringify(request.variables) : '';
   const bodyContent =
@@ -142,6 +147,13 @@ export function RequestDetails({ request }: RequestDetailsProps) {
     return term !== '' && content.toLowerCase().includes(term);
   }
 
+  // Determine search term for each section based on scope
+  function sectionTerm(sectionTitle: string): string {
+    if (!showSearch || !searchTerm.trim()) return '';
+    if (searchScope === null || searchScope === sectionTitle) return searchTerm;
+    return '';
+  }
+
   return (
     <div className="p-3 border-t bg-card/30 space-y-2">
       {/* URL + status bar */}
@@ -152,8 +164,9 @@ export function RequestDetails({ request }: RequestDetailsProps) {
         <span className="text-muted-foreground break-all leading-relaxed flex-1">{request.url}</span>
         <button
           className="shrink-0 text-[10px] text-muted-foreground hover:text-foreground px-1.5 py-0.5 rounded border hover:border-border border-transparent transition-colors"
-          title="Search in details (Ctrl+F)"
+          title="Search in details (Ctrl+F) — hover a section first to scope the search"
           onClick={() => {
+            setSearchScope(hoveredSection);
             setShowSearch((v) => !v);
             if (!showSearch) setTimeout(() => searchInputRef.current?.focus(), 0);
           }}
@@ -165,16 +178,18 @@ export function RequestDetails({ request }: RequestDetailsProps) {
       {/* In-details search bar */}
       {showSearch && (
         <div className="flex items-center gap-2 rounded border bg-muted/30 px-2 py-1.5">
-          <span className="text-[10px] text-muted-foreground shrink-0">Find:</span>
+          <span className="text-[10px] text-muted-foreground shrink-0">
+            {searchScope ? `in ${searchScope}:` : 'all:'}
+          </span>
           <input
             ref={searchInputRef}
             type="text"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            placeholder="Search in response, headers, query..."
+            placeholder={searchScope ? `Search in ${searchScope}…` : 'Search all sections…'}
             className="flex-1 bg-transparent text-xs outline-none placeholder:text-muted-foreground/60 min-w-0"
           />
-          {searchTerm && (
+          {searchTerm && searchScope === null && (
             <span className="text-[10px] text-muted-foreground shrink-0">
               {[queryContent, variablesContent, bodyContent, responseContent, errorContent, headersContent]
                 .join('\n')
@@ -184,7 +199,7 @@ export function RequestDetails({ request }: RequestDetailsProps) {
             </span>
           )}
           <button
-            onClick={() => { setShowSearch(false); setSearchTerm(''); }}
+            onClick={() => { setShowSearch(false); setSearchTerm(''); setSearchScope(null); }}
             className="text-[10px] text-muted-foreground hover:text-foreground shrink-0"
           >
             ✕
@@ -198,9 +213,9 @@ export function RequestDetails({ request }: RequestDetailsProps) {
           title="Query"
           content={queryContent}
           language="graphql"
-          defaultOpen
-          forceOpen={matches(queryContent)}
-          searchTerm={searchTerm}
+          forceOpen={matches(sectionTerm('Query')) && sectionTerm('Query') !== ''}
+          searchTerm={sectionTerm('Query')}
+          onHover={setHoveredSection}
         />
       )}
       {request.requestType === 'graphql' && request.variables && (
@@ -208,8 +223,9 @@ export function RequestDetails({ request }: RequestDetailsProps) {
           title="Variables"
           content={variablesContent}
           language="json"
-          forceOpen={matches(variablesContent)}
-          searchTerm={searchTerm}
+          forceOpen={matches(sectionTerm('Variables')) && sectionTerm('Variables') !== ''}
+          searchTerm={sectionTerm('Variables')}
+          onHover={setHoveredSection}
         />
       )}
 
@@ -219,9 +235,9 @@ export function RequestDetails({ request }: RequestDetailsProps) {
           title="Request Body"
           content={bodyContent}
           language="json"
-          defaultOpen
-          forceOpen={matches(bodyContent)}
-          searchTerm={searchTerm}
+          forceOpen={matches(sectionTerm('Request Body')) && sectionTerm('Request Body') !== ''}
+          searchTerm={sectionTerm('Request Body')}
+          onHover={setHoveredSection}
         />
       )}
 
@@ -231,17 +247,18 @@ export function RequestDetails({ request }: RequestDetailsProps) {
           title="Response"
           content={responseContent}
           language="json"
-          defaultOpen
-          forceOpen={matches(responseContent)}
-          searchTerm={searchTerm}
+          forceOpen={matches(sectionTerm('Response')) && sectionTerm('Response') !== ''}
+          searchTerm={sectionTerm('Response')}
+          onHover={setHoveredSection}
         />
       ) : request.responseError ? (
         <CollapsibleSection
           title="Error"
           content={errorContent}
           language="json"
-          forceOpen={matches(errorContent)}
-          searchTerm={searchTerm}
+          forceOpen={matches(sectionTerm('Error')) && sectionTerm('Error') !== ''}
+          searchTerm={sectionTerm('Error')}
+          onHover={setHoveredSection}
         />
       ) : (
         <div className="text-xs text-muted-foreground py-1">Response pending…</div>
@@ -253,8 +270,9 @@ export function RequestDetails({ request }: RequestDetailsProps) {
           title="Headers"
           content={headersContent}
           language="json"
-          forceOpen={matches(headersContent)}
-          searchTerm={searchTerm}
+          forceOpen={matches(sectionTerm('Headers')) && sectionTerm('Headers') !== ''}
+          searchTerm={sectionTerm('Headers')}
+          onHover={setHoveredSection}
         />
       )}
     </div>

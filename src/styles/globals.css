@@ -141,6 +141,22 @@ mark.apilot-match-current {
   background: hsl(var(--muted-foreground));
 }
 
+/* Force slim scrollbar on code blocks — pre elements can inherit default browser sizing */
+.apilot-scrollbar::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+.apilot-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+.apilot-scrollbar::-webkit-scrollbar-thumb {
+  background: hsl(var(--border));
+  border-radius: 3px;
+}
+.apilot-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: hsl(var(--muted-foreground));
+}
+
 /* ─── highlight.js dark overrides ───────────────────────────────────────────── */
 .dark .hljs {
   background: hsl(222 28% 7%);

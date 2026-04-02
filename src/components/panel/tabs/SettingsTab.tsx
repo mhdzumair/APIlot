@@ -198,6 +198,12 @@ export function SettingsTab() {
     }
   }
 
+  function handleZoomChange(value: string) {
+    const panelZoom = parseFloat(value);
+    updateSettings({ panelZoom });
+    // Zoom is a local UI preference — no need to sync to background
+  }
+
   async function handleLogProfileChange(value: string) {
     const logProfile = value as Settings['logProfile'];
     updateSettings({ logProfile });
@@ -268,6 +274,19 @@ export function SettingsTab() {
   // -------------------------------------------------------------------------
 
   const providerFields = PROVIDER_FIELDS[aiSettings.provider];
+  const panelZoom = settings.panelZoom ?? 1.0;
+
+  const ZOOM_OPTIONS = [
+    { value: '0.7', label: '70%' },
+    { value: '0.8', label: '80%' },
+    { value: '0.85', label: '85%' },
+    { value: '0.9', label: '90%' },
+    { value: '0.95', label: '95%' },
+    { value: '1.0', label: '100% (default)' },
+    { value: '1.1', label: '110%' },
+    { value: '1.2', label: '120%' },
+    { value: '1.3', label: '130%' },
+  ];
 
   return (
     <div className="p-4 space-y-8 max-w-2xl mx-auto">
@@ -305,6 +324,23 @@ export function SettingsTab() {
               <SelectItem value="minimal">Minimal</SelectItem>
               <SelectItem value="basic">Basic</SelectItem>
               <SelectItem value="detailed">Detailed</SelectItem>
+            </SelectContent>
+          </Select>
+        </SettingRow>
+
+        <SettingRow>
+          <div className="space-y-0.5">
+            <Label htmlFor="zoom-select" className="text-sm">Panel Zoom</Label>
+            <p className="text-xs text-muted-foreground">Scale the entire DevTools panel layout</p>
+          </div>
+          <Select value={String(panelZoom)} onValueChange={handleZoomChange}>
+            <SelectTrigger id="zoom-select" size="sm" className="w-36">
+              <SelectValue placeholder="100%" />
+            </SelectTrigger>
+            <SelectContent>
+              {ZOOM_OPTIONS.map((opt) => (
+                <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+              ))}
             </SelectContent>
           </Select>
         </SettingRow>

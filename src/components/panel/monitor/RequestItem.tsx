@@ -151,10 +151,47 @@ function TimingBadge({ request }: { request: LogEntry }) {
 
 // ─── RequestItem ──────────────────────────────────────────────────────────────
 
+// ─── Rule action badge ────────────────────────────────────────────────────────
+
+const ACTION_BADGE_STYLES: Record<string, { cls: string; label: string }> = {
+  mock:        { cls: 'bg-blue-500/15 text-blue-400 ring-1 ring-blue-500/30',       label: 'mock' },
+  block:       { cls: 'bg-red-500/15 text-red-400 ring-1 ring-red-500/30',          label: 'blocked' },
+  redirect:    { cls: 'bg-purple-500/15 text-purple-400 ring-1 ring-purple-500/30', label: 'redirect' },
+  delay:       { cls: 'bg-amber-500/15 text-amber-400 ring-1 ring-amber-500/30',    label: 'delay' },
+  modify:      { cls: 'bg-emerald-500/15 text-emerald-400 ring-1 ring-emerald-500/30', label: 'modify' },
+  passthrough: { cls: 'bg-muted text-muted-foreground ring-1 ring-border',           label: 'pass' },
+};
+
+function RuleBadge({ request }: { request: LogEntry }) {
+  const hasRules = (request.matchedRules?.length ?? 0) > 0;
+  if (!hasRules) return null;
+
+  const action = request.appliedRuleAction ?? 'match';
+  const style = ACTION_BADGE_STYLES[action] ?? {
+    cls: 'bg-amber-500/15 text-amber-400 ring-1 ring-amber-500/30',
+    label: action,
+  };
+  const names = request.matchedRules!.join(', ');
+  const extra = (request.matchedRules!.length > 1)
+    ? ` +${request.matchedRules!.length - 1}`
+    : '';
+
+  return (
+    <span
+      className={cn('inline-flex items-center rounded px-1.5 py-px text-[10px] font-medium shrink-0', style.cls)}
+      title={`Rules applied: ${names}`}
+    >
+      ◆ {style.label}{extra}
+    </span>
+  );
+}
+
+// ─── RequestItem ──────────────────────────────────────────────────────────────
+
 export function RequestItem({ request, isExpanded, onToggle }: RequestItemProps) {
   const operationName = getOperationDisplayName(request);
   const method = getRequestMethod(request);
-  const hasMatchedRules = (request.matchedRules?.length ?? 0) > 0;
+  const hasMatchedRules = (request.matchedRules?.length ?? 0) > 0; // used for row highlight
   const timestamp = new Date(request.timestamp).toLocaleTimeString([], {
     hour: '2-digit',
     minute: '2-digit',
@@ -197,14 +234,6 @@ export function RequestItem({ request, isExpanded, onToggle }: RequestItemProps)
             )} title={operationName}>
               {operationName}
             </span>
-            {hasMatchedRules && (
-              <span
-                className="text-amber-400/80 shrink-0 text-[10px]"
-                title={`Matched rules: ${request.matchedRules!.join(', ')}`}
-              >
-                ◆
-              </span>
-            )}
           </div>
           <div className="text-[11px] text-muted-foreground truncate mt-px font-mono" title={request.url}>
             {request.url}
@@ -216,6 +245,7 @@ export function RequestItem({ request, isExpanded, onToggle }: RequestItemProps)
           className="flex items-center gap-1.5 shrink-0 ml-1"
           onClick={(e) => e.stopPropagation()}
         >
+          <RuleBadge request={request} />
           <TimingBadge request={request} />
           <StatusBadge status={request.responseStatus} />
 

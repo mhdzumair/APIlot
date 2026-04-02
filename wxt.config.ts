@@ -31,7 +31,13 @@ export default defineConfig({
         name: 'APIlot',
         version: '2.1.0',
         icons,
-        permissions: ['activeTab', 'storage', 'webRequest'] as any[],
+        permissions: [
+          'activeTab',
+          'storage',
+          'webRequest',
+          'declarativeNetRequest',
+          'declarativeNetRequestWithHostAccess',
+        ] as any[],
         host_permissions: ['<all_urls>'],
         web_accessible_resources: [
           { resources: ['injected.js'], matches: ['<all_urls>'] },

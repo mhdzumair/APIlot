@@ -2,7 +2,12 @@ import type { LogEntry, RequestData, ResponseData } from '../types/requests';
 import type { ApiRule } from '../types/rules';
 import type { Settings, AISettings, PerformanceData } from '../types/settings';
 import type { Session } from '../types/sessions';
-import { getMatchingRules } from '../shared/ruleMatch';
+import {
+  buildRedirectDestination,
+  extractFirefoxBlockingUrlPatterns,
+  getMatchingRules,
+  matchesRule,
+} from '../shared/ruleMatch';
 import type { RequestMatchData } from '../shared/ruleMatch';
 import type { BrowserAdapter } from './types';
 
@@ -58,6 +63,12 @@ export class APITestingCore {
   private sessions!: Session[];
   private capturedRequestIds!: Set<string>;
   private webRequestBuffer!: Map<number, WebRequestBufferEntry[]>;
+  /** Firefox MV2: blocking redirect listener (script src, etc.) */
+  private firefoxBlockingRedirectHandler:
+    | ((details: { url: string; method?: string }) =>
+        | Record<string, never>
+        | { redirectUrl: string })
+    | null = null;
 
   constructor(adapter: BrowserAdapter) {
     this.adapter = adapter;
@@ -237,7 +248,7 @@ export class APITestingCore {
     wr.onBeforeRequest.addListener(
       (details) => {
         const tabState = this.adapter.peekTabState(details.tabId as number);
-        if (!tabState || !tabState.devToolsOpen || !tabState.enabled) {
+        if (!tabState || !tabState.enabled) {
           return;
         }
         const urlClass = classifyRequest(details.url as string);
@@ -264,7 +275,12 @@ export class APITestingCore {
         if (!this.webRequestBuffer.has(tabId)) {
           this.webRequestBuffer.set(tabId, []);
         }
-        this.webRequestBuffer.get(tabId)!.push(requestData);
+        const buf = this.webRequestBuffer.get(tabId)!;
+        // Cap buffer at 200 entries per tab to prevent unbounded growth
+        // when devtools is not open (devToolsOpen check was removed to support
+        // redirect rules without devtools being open)
+        if (buf.length >= 200) buf.shift();
+        buf.push(requestData);
 
         console.log('[CORE] WebRequest captured:', {
           url: details.url,
@@ -363,6 +379,127 @@ export class APITestingCore {
     }
 
     console.log('[CORE] WebRequest capture initialized');
+
+    this.refreshFirefoxBlockingRedirects();
+  }
+
+  /**
+   * Firefox: blocking onBeforeRequest redirects (Chrome uses declarativeNetRequest).
+   */
+  private handleBlockingRedirect(details: {
+    url: string;
+    method?: string;
+  }): Record<string, never> | { redirectUrl: string } {
+    const url = details.url;
+    const method = details.method || 'GET';
+
+    for (const rule of this.rules.values()) {
+      if (!rule.enabled || rule.action !== 'redirect') continue;
+      if (!(rule.redirectUrl ?? '').trim()) continue;
+
+      const rt = rule.requestType ?? 'graphql';
+      let matched = false;
+      // static rules use REST matching semantics (URL + path/endpoint patterns)
+      if (rt === 'rest' || rt === 'both' || rt === 'static') {
+        if (matchesRule({ ...rule, requestType: 'rest' }, { requestType: 'rest', url, method })) {
+          matched = true;
+        }
+      }
+      if (!matched && (rt === 'graphql' || rt === 'both')) {
+        if (matchesRule(rule, { requestType: 'graphql', url, method })) {
+          matched = true;
+        }
+      }
+      if (!matched) continue;
+
+      const dest = buildRedirectDestination(rule, url);
+      if (dest) {
+        console.log('[APILOT] REDIRECT (blocking)', url, '->', dest);
+        return { redirectUrl: dest };
+      }
+    }
+    return {};
+  }
+
+  private refreshFirefoxBlockingRedirects(): void {
+    if (!this.adapter.supportsBlockingWebRequestRedirects()) {
+      return;
+    }
+    const globalApi =
+      typeof browser !== 'undefined'
+        ? browser
+        : typeof chrome !== 'undefined'
+          ? chrome
+          : null;
+    if (!globalApi) return;
+
+    const webRequest = (
+      globalApi as unknown as {
+        webRequest?: {
+          onBeforeRequest: {
+            addListener: (
+              cb: (d: { url: string; method?: string }) => unknown,
+              filter: { urls: string[] },
+              extra?: string[]
+            ) => void;
+            removeListener: (cb: (d: { url: string; method?: string }) => unknown) => void;
+          };
+          handlerBehaviorChanged?: () => void;
+        };
+      }
+    ).webRequest;
+    if (!webRequest?.onBeforeRequest) return;
+
+    if (this.firefoxBlockingRedirectHandler) {
+      try {
+        webRequest.onBeforeRequest.removeListener(
+          this.firefoxBlockingRedirectHandler
+        );
+      } catch {
+        /* ignore */
+      }
+      this.firefoxBlockingRedirectHandler = null;
+    }
+
+    let useAllUrls = false;
+    const patterns = new Set<string>();
+    for (const rule of this.rules.values()) {
+      if (!rule.enabled || rule.action !== 'redirect') continue;
+      if (!(rule.redirectUrl ?? '').trim()) continue;
+      const ex = extractFirefoxBlockingUrlPatterns(rule.urlPattern ?? '');
+      if (ex.useAllUrls) {
+        useAllUrls = true;
+        break;
+      }
+      for (const p of ex.patterns) {
+        patterns.add(p);
+      }
+    }
+
+    const urls = useAllUrls ? ['<all_urls>'] : [...patterns];
+    if (urls.length === 0) {
+      console.log(
+        '[APILOT] No blocking redirect patterns (set urlPattern on each redirect rule)'
+      );
+      return;
+    }
+
+    const core = this;
+    this.firefoxBlockingRedirectHandler = (d) => core.handleBlockingRedirect(d);
+
+    try {
+      webRequest.onBeforeRequest.addListener(
+        this.firefoxBlockingRedirectHandler,
+        { urls },
+        ['blocking']
+      );
+      if (typeof webRequest.handlerBehaviorChanged === 'function') {
+        webRequest.handlerBehaviorChanged();
+      }
+      console.log('[APILOT] Firefox blocking redirects active:', urls);
+    } catch (e) {
+      console.error('[APILOT] Failed to register blocking redirects:', e);
+    }
   }
 
   private isLikelyDuplicate(
@@ -408,8 +545,9 @@ export class APITestingCore {
         ? 'static'
         : this.detectRequestType(request.url, request.method);
 
-    const logEntry = {
+    const logEntry: LogEntry = {
       id: request.webRequestId,
+      tabId: request.tabId,
       requestType,
       url: request.url,
       method: request.method,
@@ -419,31 +557,47 @@ export class APITestingCore {
       responseTime: request.responseTime,
       responseTimestamp: new Date().toISOString(),
       endTime: request.endTime,
-      source: 'webRequest' as const,
+      source: 'webRequest',
       frameId: request.frameId,
       operationName:
         requestType === 'static'
           ? this.getAssetName(request.url)
           : requestType === 'rest'
-          ? this.generateOperationName(request.url, request.method)
-          : 'WebRequest',
+            ? this.generateOperationName(request.url, request.method)
+            : 'WebRequest',
     };
 
-    await this.adapter.notifyDevTools(
-      'REQUEST_LOGGED',
-      logEntry,
-      request.tabId
-    );
+    // Populate matched rules for webRequest-based captures
+    const tabState = this.adapter.peekTabState(request.tabId);
+    if (tabState?.enabled) {
+      const matchData: RequestMatchData = {
+        requestType: requestType === 'static' ? 'rest' : requestType,
+        url: request.url,
+        method: request.method,
+      };
+      const matched = this.findMatchingRules(matchData, request.url);
+      if (matched.length > 0) {
+        logEntry.matchedRules = matched.map((r) => r.name || r.id);
+        logEntry.appliedRuleAction = matched[0].action;
+      }
+    }
 
-    await this.adapter.notifyDevTools(
-      'RESPONSE_LOGGED',
-      {
-        ...logEntry,
+    await this.adapter.addRequestLog(request.tabId, logEntry);
+    await this.adapter.notifyDevTools('REQUEST_LOGGED', logEntry, request.tabId);
+    await this.adapter.notifyPopup('REQUEST_LOGGED', logEntry, request.tabId);
+
+    const updated =
+      (await this.adapter.updateRequestLog(request.tabId, logEntry.id, {
         response: null,
-        responseHeaders: request.responseHeaders,
-      },
-      request.tabId
-    );
+        responseStatus: logEntry.responseStatus,
+        responseTimestamp: logEntry.responseTimestamp,
+        endTime: request.endTime,
+        responseTime: request.responseTime,
+        responseHeaders: request.responseHeaders as LogEntry['responseHeaders'],
+      })) ?? logEntry;
+
+    await this.adapter.notifyDevTools('RESPONSE_LOGGED', updated, request.tabId);
+    await this.adapter.notifyPopup('RESPONSE_LOGGED', updated, request.tabId);
   }
 
   private detectRequestType(url: string, _method: string): 'graphql' | 'rest' {
@@ -518,6 +672,8 @@ export class APITestingCore {
       performanceData: this.performanceData,
       sessions: this.sessions as unknown as undefined,
     });
+
+    await this.syncRedirectRules();
   }
 
   private addRule(rule: Partial<ApiRule>): string {
@@ -549,12 +705,25 @@ export class APITestingCore {
     return this.rules.delete(ruleId);
   }
 
+  /** Sync redirect rules to both Chrome DNR and Firefox blocking webRequest. */
+  private async syncRedirectRules(): Promise<void> {
+    if (typeof this.adapter.syncDeclarativeRedirectRules === 'function') {
+      try {
+        await this.adapter.syncDeclarativeRedirectRules(this.rules);
+      } catch (e) {
+        console.warn('[CORE] DNR redirect sync failed:', (e as Error)?.message ?? e);
+      }
+    }
+    this.refreshFirefoxBlockingRedirects();
+  }
+
   private findMatchingRules(
     requestData: Partial<RequestData>,
     url: string
   ): ApiRule[] {
+    const rt = requestData.requestType ?? 'graphql';
     const matchData: RequestMatchData = {
-      requestType: requestData.requestType ?? 'graphql',
+      requestType: rt === 'static' ? 'rest' : rt,
       url,
       operationName: requestData.operationName,
       method: requestData.method,
@@ -869,6 +1038,16 @@ export class APITestingCore {
       source: 'injectedScript',
     };
 
+    // Populate matched rules so the monitor can show which rules are applied
+    const tabState = this.adapter.peekTabState(tabId);
+    if (tabState?.enabled) {
+      const matched = this.findMatchingRules(requestData, requestData.url);
+      if (matched.length > 0) {
+        logEntry.matchedRules = matched.map((r) => r.name || r.id);
+        logEntry.appliedRuleAction = matched[0].action;
+      }
+    }
+
     await this.adapter.addRequestLog(tabId, logEntry);
 
     await this.adapter.notifyDevTools('REQUEST_LOGGED', logEntry, tabId);
@@ -981,6 +1160,7 @@ export class APITestingCore {
           });
 
           sendResponse({ success: true, ruleId });
+          void this.syncRedirectRules();
           break;
         }
 
@@ -997,6 +1177,7 @@ export class APITestingCore {
           });
 
           sendResponse({ success: true });
+          void this.syncRedirectRules();
           break;
         }
 
@@ -1011,6 +1192,7 @@ export class APITestingCore {
           });
 
           sendResponse({ success: true });
+          void this.syncRedirectRules();
           break;
         }
 

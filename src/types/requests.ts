@@ -79,4 +79,6 @@ export interface LogEntry {
   // Session / page group info
   pageGroupId?: string;
   matchedRules?: string[];
+  /** Primary action of the first matched rule — used for the monitor badge */
+  appliedRuleAction?: string;
 }

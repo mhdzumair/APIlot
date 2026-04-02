@@ -37,4 +37,6 @@ export interface BrowserAdapter {
   notifyDevTools(type: string, data: unknown, tabId?: number | null): Promise<void>;
   notifyPopup(type: string, data: unknown, tabId?: number | null): Promise<void>;
   handleBrowserSpecificMessage(message: unknown, sender: browser.runtime.MessageSender, sendResponse: (response: unknown) => void): Promise<void>;
+  /** Chrome MV3 only — DNR script/XHR redirects */
+  syncDeclarativeRedirectRules?(rulesMap: Map<string, ApiRule>): Promise<void>;
 }

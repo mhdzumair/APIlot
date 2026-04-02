@@ -134,7 +134,7 @@ export function CodeBlock({ content, language = 'json', className, searchTerm = 
       >
         {copied ? '✓ copied' : 'copy'}
       </Button>
-      <pre className="overflow-auto text-xs p-3 pr-14 max-h-64 m-0">
+      <pre className="overflow-auto text-xs p-3 pr-14 max-h-64 m-0 apilot-scrollbar">
         <code ref={codeRef} className={`language-${language} hljs`}>
           {content}
         </code>

@@ -3,6 +3,7 @@ import { useSettingsStore } from '@/stores/useSettingsStore';
 
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
   const theme = useSettingsStore((s) => s.settings.theme);
+  const panelZoom = useSettingsStore((s) => s.settings.panelZoom ?? 1.0);
 
   useEffect(() => {
     const root = document.documentElement;
@@ -18,6 +19,15 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
       root.classList.toggle('dark', dark);
     }
   }, [theme]);
+
+  useEffect(() => {
+    // CSS zoom scales the entire panel content, including DevTools sidebar panels
+    (document.documentElement.style as CSSStyleDeclaration & { zoom: string }).zoom =
+      String(panelZoom);
+    return () => {
+      (document.documentElement.style as CSSStyleDeclaration & { zoom: string }).zoom = '';
+    };
+  }, [panelZoom]);
 
   return <>{children}</>;
 }

@@ -15,6 +15,8 @@ export interface Settings {
   logProfile: 'basic' | 'detailed' | 'minimal';
   theme: 'light' | 'dark' | 'system';
   networkCapture?: NetworkCapture;
+  /** Panel zoom level (0.7–1.3, default 1.0). Applied via CSS zoom — local UI preference only. */
+  panelZoom?: number;
 }
 
 export type AIProvider =
