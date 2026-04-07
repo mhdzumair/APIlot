@@ -1,11 +1,18 @@
 import * as React from 'react';
-import { useRef, useCallback } from 'react';
+import { useRef, useCallback, useMemo, useState } from 'react';
 import Chart from 'chart.js/auto';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { useMonitorStore } from '@/stores/useMonitorStore';
 import type { LogEntry } from '@/types/requests';
-import type { PerformanceMetrics, PerformanceRecommendation, SlowRequest, TimeSeriesPoint } from '@/services/PerformanceTracker';
+import type {
+  EndpointStat,
+  PerformanceMetrics,
+  PerformanceRecommendation,
+  SlowRequest,
+  TimeSeriesPoint,
+} from '@/services/PerformanceTracker';
+import { buildEndpointStats } from '@/shared/endpointStats';
 
 function recommendationBadgeClass(type: PerformanceRecommendation['type']): string {
   switch (type) {
@@ -128,6 +135,135 @@ function ResponseTimeChart({ metrics }: { metrics: PerformanceMetrics }) {
   );
 }
 
+const ENDPOINT_SORT_KEYS = [
+  'displayName',
+  'requestType',
+  'count',
+  'avgMs',
+  'minMs',
+  'maxMs',
+  'p50Ms',
+  'p95Ms',
+  'sumMs',
+  'percentOfTotalTime',
+] as const;
+
+type EndpointSortKey = (typeof ENDPOINT_SORT_KEYS)[number];
+
+function sortEndpointStats(
+  stats: EndpointStat[],
+  key: EndpointSortKey,
+  dir: 'asc' | 'desc',
+): EndpointStat[] {
+  const m = dir === 'asc' ? 1 : -1;
+  return [...stats].sort((a, b) => {
+    const va = a[key];
+    const vb = b[key];
+    if (typeof va === 'string' && typeof vb === 'string') {
+      return m * va.localeCompare(vb);
+    }
+    return m * ((Number(va) || 0) - (Number(vb) || 0));
+  });
+}
+
+function EndpointBreakdownTable({ stats }: { stats: EndpointStat[] }) {
+  const [sortKey, setSortKey] = useState<EndpointSortKey>('sumMs');
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
+
+  const sorted = useMemo(
+    () => sortEndpointStats(stats, sortKey, sortDir),
+    [stats, sortKey, sortDir],
+  );
+
+  const onHeaderClick = (k: EndpointSortKey) => {
+    if (k === sortKey) {
+      setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
+    } else {
+      setSortKey(k);
+      setSortDir(k === 'displayName' ? 'asc' : 'desc');
+    }
+  };
+
+  const headerLabel = (k: EndpointSortKey) => {
+    const labels: Record<EndpointSortKey, string> = {
+      displayName: 'Name',
+      requestType: 'Type',
+      count: 'Count',
+      avgMs: 'Avg',
+      minMs: 'Min',
+      maxMs: 'Max',
+      p50Ms: 'P50',
+      p95Ms: 'P95',
+      sumMs: 'Total',
+      percentOfTotalTime: '% time',
+    };
+    return labels[k];
+  };
+
+  const sortIndicator = (k: EndpointSortKey) =>
+    sortKey === k ? (sortDir === 'asc' ? ' \u2191' : ' \u2193') : '';
+
+  if (stats.length === 0) {
+    return (
+      <div className="rounded-md border flex items-center justify-center min-h-[72px] px-3 text-xs text-muted-foreground">
+        No completed requests with timing yet — trigger API calls while monitoring is on.
+      </div>
+    );
+  }
+
+  return (
+    <div className="rounded-md border overflow-x-auto">
+      <table className="w-full text-[10px] text-left border-collapse">
+        <thead>
+          <tr className="border-b bg-muted/30">
+            {ENDPOINT_SORT_KEYS.map((k) => (
+              <th key={k} className="px-2 py-1.5 font-medium whitespace-nowrap">
+                <button
+                  type="button"
+                  onClick={() => onHeaderClick(k)}
+                  className="inline-flex items-center gap-0.5 hover:text-foreground text-muted-foreground"
+                >
+                  {headerLabel(k)}
+                  <span className="text-[9px] opacity-70 tabular-nums">{sortIndicator(k)}</span>
+                </button>
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody className="divide-y">
+          {sorted.map((row) => (
+            <tr key={row.groupKey} className="hover:bg-muted/20">
+              <td className="px-2 py-1.5 max-w-[140px] truncate" title={row.displayName}>
+                {row.displayName}
+              </td>
+              <td className="px-2 py-1.5">
+                <Badge
+                  variant="outline"
+                  className={`text-[9px] px-1 py-0 shrink-0 ${
+                    row.requestType === 'graphql'
+                      ? 'border-pink-500/40 text-pink-600'
+                      : 'border-blue-500/40 text-blue-600'
+                  }`}
+                >
+                  {row.requestType.toUpperCase()}
+                </Badge>
+              </td>
+              <td className="px-2 py-1.5 tabular-nums">{row.count}</td>
+              <td className="px-2 py-1.5 tabular-nums">{row.avgMs}ms</td>
+              <td className="px-2 py-1.5 tabular-nums">{row.minMs}ms</td>
+              <td className="px-2 py-1.5 tabular-nums">{row.maxMs}ms</td>
+              <td className="px-2 py-1.5 tabular-nums">{row.p50Ms}ms</td>
+              <td className="px-2 py-1.5 tabular-nums">{row.p95Ms}ms</td>
+              <td className="px-2 py-1.5 tabular-nums">{row.sumMs}ms</td>
+              <td className="px-2 py-1.5 tabular-nums">{row.percentOfTotalTime}%</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 // Derive PerformanceMetrics from the live monitor request log
 function computeMetrics(requestLog: LogEntry[]): PerformanceMetrics | null {
   if (requestLog.length === 0) return null;
@@ -192,6 +328,8 @@ function computeMetrics(requestLog: LogEntry[]): PerformanceMetrics | null {
     (e) => e.responseTime === undefined && !e.responseError
   ).length;
 
+  const endpointStats = buildEndpointStats(requestLog);
+
   return {
     avgResponseTime,
     minResponseTime: responseTimes.length > 0 ? Math.min(...responseTimes) : 0,
@@ -203,6 +341,7 @@ function computeMetrics(requestLog: LogEntry[]): PerformanceMetrics | null {
       completed.length > 0 ? Math.round((errorCount / completed.length) * 100) : 0,
     requestsPerMinute,
     slowestRequests,
+    endpointStats,
     requestsByType: {
       graphql: requestLog.filter((e) => e.requestType === 'graphql').length,
       rest: requestLog.filter((e) => e.requestType === 'rest').length,
@@ -258,7 +397,10 @@ export function AnalyticsDashboard() {
       <div className="flex items-center justify-between shrink-0">
         <div>
           <h2 className="text-sm font-semibold">Analytics</h2>
-          <p className="text-xs text-muted-foreground">API performance metrics</p>
+          <p className="text-xs text-muted-foreground">
+            Metrics reflect the current capture in this tab (since last Clear or reload). Use Clear to
+            start a fresh profiling run.
+          </p>
         </div>
         <div className="flex gap-2">
           <Button variant="outline" size="sm" onClick={handleExport} disabled={!metrics} className="h-7 text-xs">
@@ -307,14 +449,29 @@ export function AnalyticsDashboard() {
         />
       </div>
 
+      {/* Endpoint breakdown (aggregated across repeated calls) */}
+      {metrics && (
+        <div className="rounded-md border shrink-0">
+          <div className="px-3 py-2 border-b bg-muted/30">
+            <div className="text-xs font-medium">Endpoint breakdown</div>
+            <div className="text-[10px] text-muted-foreground mt-0.5">
+              Rolled up by operation or REST route; totals sum response time across calls.
+            </div>
+          </div>
+          <div className="p-2">
+            <EndpointBreakdownTable stats={metrics.endpointStats} />
+          </div>
+        </div>
+      )}
+
       {/* Chart */}
       {metrics && <ResponseTimeChart metrics={metrics} />}
 
-      {/* Slowest endpoints */}
+      {/* Slowest single requests */}
       {metrics && metrics.slowestRequests.length > 0 && (
         <div className="rounded-md border shrink-0">
           <div className="px-3 py-2 border-b bg-muted/30">
-            <div className="text-xs font-medium">Slowest Endpoints</div>
+            <div className="text-xs font-medium">Slowest single requests</div>
           </div>
           <div className="divide-y">
             {metrics.slowestRequests.map((req) => (

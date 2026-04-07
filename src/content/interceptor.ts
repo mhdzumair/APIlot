@@ -181,12 +181,11 @@ export class APIInterceptor {
   }
 
   stopMonitoring(): void {
-    if (this.isMonitoring) {
-      this.isMonitoring = false;
-      // Send message to injected script to stop monitoring
-      window.postMessage({ type: 'STOP_API_MONITORING' }, '*');
-      console.log('[CONTENT] API monitoring stopped');
-    }
+    this.isMonitoring = false;
+    // Always sync the page context — it can be out of sync if STOP was skipped earlier
+    // or the injected script used its default state before any START.
+    window.postMessage({ type: 'STOP_API_MONITORING' }, '*');
+    console.log('[CONTENT] API monitoring stopped');
   }
 
   private injectInterceptor(): void {
@@ -229,40 +228,8 @@ export class APIInterceptor {
         return;
       }
 
-      // Log the request only if enabled
-      console.log(`[CONTENT] Logging ${requestType} request to background:`, {
-        requestId: payload.requestId,
-        hasHeaders: !!payload.requestHeaders,
-        headerCount: payload.requestHeaders
-          ? Object.keys(payload.requestHeaders as object).length
-          : 0,
-      });
-
-      const requestData: RequestData = {
-        requestId: payload.requestId as string | undefined,
-        requestType: requestType as 'graphql' | 'rest',
-        url: payload.url as string,
-        operationName: payload.operationName as string | undefined,
-        query: payload.query as string | undefined,
-        variables: payload.variables as Record<string, unknown> | undefined,
-        method: payload.method as string | undefined,
-        endpoint: payload.endpoint as string | undefined,
-        path: payload.path as string | undefined,
-        queryParams: payload.queryParams as Record<string, string> | undefined,
-        body: payload.body,
-        requestHeaders: payload.requestHeaders as Record<string, string> | undefined,
-        timestamp: payload.timestamp as string | undefined,
-      };
-
-      const logResponse = (await browser.runtime.sendMessage({
-        type: 'LOG_REQUEST',
-        data: requestData,
-      })) as MessageResponses['LOG_REQUEST'];
-      console.log('[CONTENT] Request logged:', logResponse);
-
-      // Check for matching rule
-      console.log('[CONTENT] Checking for matching rule...');
-      const response = (await browser.runtime.sendMessage({
+      // Tab-level enable: resolve before logging so we never log or apply rules when the tab is off.
+      const ruleResponse = (await browser.runtime.sendMessage({
         type: 'GET_MATCHING_RULE',
         data: {
           requestType: requestType,
@@ -288,45 +255,73 @@ export class APIInterceptor {
         },
       })) as MessageResponses['GET_MATCHING_RULE'];
 
-      console.log('[CONTENT] Rule check response:', response);
+      if (!ruleResponse.success || ruleResponse.enabled !== true) {
+        console.log('[CONTENT] Tab monitoring disabled or rule check failed — proceeding without rules');
+        window.postMessage(
+          { type: 'API_REQUEST_PROCEED', payload: { requestId: payload.requestId } },
+          '*',
+        );
+        return;
+      }
+
+      const requestData: RequestData = {
+        requestId: payload.requestId as string | undefined,
+        requestType: requestType as 'graphql' | 'rest',
+        url: payload.url as string,
+        operationName: payload.operationName as string | undefined,
+        query: payload.query as string | undefined,
+        variables: payload.variables as Record<string, unknown> | undefined,
+        method: payload.method as string | undefined,
+        endpoint: payload.endpoint as string | undefined,
+        path: payload.path as string | undefined,
+        queryParams: payload.queryParams as Record<string, string> | undefined,
+        body: payload.body,
+        requestHeaders: payload.requestHeaders as Record<string, string> | undefined,
+        timestamp: payload.timestamp as string | undefined,
+      };
+
+      console.log(`[CONTENT] Logging ${requestType} request to background:`, {
+        requestId: payload.requestId,
+        hasHeaders: !!payload.requestHeaders,
+        headerCount: payload.requestHeaders
+          ? Object.keys(payload.requestHeaders as object).length
+          : 0,
+      });
+
+      const logResponse = (await browser.runtime.sendMessage({
+        type: 'LOG_REQUEST',
+        data: requestData,
+      })) as MessageResponses['LOG_REQUEST'];
+      console.log('[CONTENT] Request logged:', logResponse);
+
+      console.log('[CONTENT] Rule check response:', ruleResponse);
       console.log(
-        `[CONTENT] Rules found: ${response.rules ? response.rules.length : 0}, Single rule: ${response.rule ? 'yes' : 'no'}`,
+        `[CONTENT] Rules found: ${ruleResponse.rules ? ruleResponse.rules.length : 0}, Single rule: ${ruleResponse.rule ? 'yes' : 'no'}`,
       );
 
-      if (response.success && response.enabled !== false) {
-        // Always check for rules array first, then fall back to single rule for compatibility
-        const rulesToApply =
-          response.rules && response.rules.length > 0
-            ? response.rules
-            : response.rule
-              ? [response.rule]
-              : [];
+      // Always check for rules array first, then fall back to single rule for compatibility
+      const rulesToApply =
+        ruleResponse.rules && ruleResponse.rules.length > 0
+          ? ruleResponse.rules
+          : ruleResponse.rule
+            ? [ruleResponse.rule]
+            : [];
 
-        if (rulesToApply.length > 0) {
-          console.log(
-            `[CONTENT] Found ${rulesToApply.length} matching rule(s) for ${(payload.operationName as string) || (payload.endpoint as string)}:`,
-            rulesToApply.map((r) => `${r.name} (${r.action})`).join(', '),
-          );
+      if (rulesToApply.length > 0) {
+        console.log(
+          `[CONTENT] Found ${rulesToApply.length} matching rule(s) for ${(payload.operationName as string) || (payload.endpoint as string)}:`,
+          rulesToApply.map((r) => `${r.name} (${r.action})`).join(', '),
+        );
 
-          // Use the unified multi-rule handler
-          window.postMessage(
-            {
-              type: 'APPLY_API_RULES',
-              payload: { requestId: payload.requestId, rules: rulesToApply },
-            },
-            '*',
-          );
-        } else {
-          // No rules apply, proceed normally
-          console.log('[CONTENT] No rules apply, proceeding normally');
-          window.postMessage(
-            { type: 'API_REQUEST_PROCEED', payload: { requestId: payload.requestId } },
-            '*',
-          );
-        }
+        window.postMessage(
+          {
+            type: 'APPLY_API_RULES',
+            payload: { requestId: payload.requestId, rules: rulesToApply },
+          },
+          '*',
+        );
       } else {
-        // Extension disabled, proceed normally
-        console.log('[CONTENT] Extension disabled, proceeding normally');
+        console.log('[CONTENT] No rules apply, proceeding normally');
         window.postMessage(
           { type: 'API_REQUEST_PROCEED', payload: { requestId: payload.requestId } },
           '*',
@@ -352,6 +347,14 @@ export class APIInterceptor {
     });
 
     try {
+      const enabledResp = (await browser.runtime.sendMessage({
+        type: 'GET_ENABLED_STATUS',
+      })) as MessageResponses['GET_ENABLED_STATUS'] | undefined;
+
+      if (!enabledResp?.enabled) {
+        return;
+      }
+
       const responseData: ResponseData = {
         requestId: payload.requestId as string,
         requestType: requestType as 'graphql' | 'rest',

@@ -994,6 +994,11 @@ export class APITestingCore {
       return;
     }
 
+    const tabStateForLog = await this.adapter.getTabState(tabId);
+    if (!tabStateForLog.enabled) {
+      return;
+    }
+
     this.markRequestCaptured(
       requestData.requestId ?? '',
       requestData.url,
@@ -1058,6 +1063,16 @@ export class APITestingCore {
     responseData: ResponseData,
     tabId: number | undefined
   ): Promise<void> {
+    if (!tabId) {
+      console.warn('[CORE] No tab ID provided for response logging');
+      return;
+    }
+
+    const tabStateForResponse = await this.adapter.getTabState(tabId);
+    if (!tabStateForResponse.enabled) {
+      return;
+    }
+
     const requestType = responseData.requestType ?? 'graphql';
     console.log(`[CORE] Logging ${requestType} response for tab ${tabId}:`, {
       requestId: responseData.requestId,
@@ -1065,11 +1080,6 @@ export class APITestingCore {
       hasResponse: !!responseData.response,
       error: responseData.error,
     });
-
-    if (!tabId) {
-      console.warn('[CORE] No tab ID provided for response logging');
-      return;
-    }
 
     const endTime = Date.now();
     // Peek at existing entry to get startTime so we can include responseTime in the update

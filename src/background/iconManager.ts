@@ -122,10 +122,11 @@ export class IconManager {
   ): Promise<IconState> {
     let iconState: IconState = 'default';
 
+    // Match toolbar badge semantics: "active" only while DevTools is open and tab is enabled.
     if (tabState.enabled && tabState.devToolsOpen) {
       iconState = 'enabled';
     } else if (tabState.enabled && !tabState.devToolsOpen) {
-      iconState = 'enabled';
+      iconState = 'default';
     } else {
       iconState = 'disabled';
     }

@@ -58,6 +58,27 @@ export interface SlowRequest {
   timestamp: string;
 }
 
+/** Rolled-up stats for one logical endpoint / operation across multiple captured requests. */
+export interface EndpointStat {
+  /** Stable grouping key (not for display). */
+  groupKey: string;
+  /** Human-readable label (operation name or METHOD path). */
+  displayName: string;
+  requestType: RequestType;
+  count: number;
+  successCount: number;
+  errorCount: number;
+  avgMs: number;
+  minMs: number;
+  maxMs: number;
+  p50Ms: number;
+  p95Ms: number;
+  /** Sum of response times in this group (ms). */
+  sumMs: number;
+  /** Share of total response time across all completed requests (0–100). */
+  percentOfTotalTime: number;
+}
+
 export interface TimeSeriesPoint {
   timestamp: string;
   responseTime: number;
@@ -74,6 +95,8 @@ export interface PerformanceMetrics {
   errorRate: number;
   requestsPerMinute: number;
   slowestRequests: SlowRequest[];
+  /** Per-endpoint / per-operation aggregates for page profiling. */
+  endpointStats: EndpointStat[];
   requestsByType: { graphql: number; rest: number };
   requestsByStatus: Record<string | number, number>;
   timeSeriesData: TimeSeriesPoint[];
@@ -242,6 +265,7 @@ export class PerformanceTracker {
         errorRate: 0,
         requestsPerMinute: 0,
         slowestRequests: [],
+        endpointStats: [],
         requestsByType: { graphql: 0, rest: 0 },
         requestsByStatus: {},
         timeSeriesData: [],
@@ -305,6 +329,7 @@ export class PerformanceTracker {
       ),
       requestsPerMinute,
       slowestRequests,
+      endpointStats: [],
       requestsByType,
       requestsByStatus,
       timeSeriesData,

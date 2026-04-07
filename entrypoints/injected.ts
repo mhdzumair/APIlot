@@ -13,7 +13,8 @@ export default defineUnlistedScript(() => {
 
   const originalFetch = window.fetch;
   const pendingRequests = new Map<string, any>();
-  let isMonitoringEnabled = true;
+  /** Must stay false until content script sends START_API_MONITORING (see interceptor). */
+  let isMonitoringEnabled = false;
 
   /** Synced from extension settings. If useFilters is false, all HTTP(S) fetch/XHR is captured (except GraphQL + special URLs). */
   let networkCaptureSettings: {
@@ -1291,7 +1292,7 @@ export default defineUnlistedScript(() => {
   };
 
   console.log(
-    '✅ [APILOT] API request interception active (GraphQL + REST, fetch + XHR)',
+    '✅ [APILOT] Hooks installed (GraphQL + REST, fetch + XHR). Monitoring starts when the panel enables it.',
     frameInfo,
   );
 
