@@ -132,18 +132,20 @@ export function QueryBuilderTab() {
 
   const capturedValues = useMemo(() => {
     if (!selectedOperation) return {};
+    // Collect captured variable values by argument name across all GraphQL log entries.
+    // We match by argument name (not operation name) so that values seen in any operation
+    // that shares the same argument names are surfaced as hints.
     const hints: Record<string, string[]> = {};
     for (const entry of requestLog) {
-      if (entry.operationName === selectedOperation.name && entry.variables) {
-        for (const [key, val] of Object.entries(entry.variables as Record<string, unknown>)) {
-          if (!hints[key]) hints[key] = [];
-          const str = typeof val === 'string' ? val : JSON.stringify(val);
-          if (!hints[key].includes(str) && hints[key].length < 5) hints[key].push(str);
-        }
+      if (entry.requestType !== 'graphql' || !entry.variables) continue;
+      for (const [key, val] of Object.entries(entry.variables as Record<string, unknown>)) {
+        if (!hints[key]) hints[key] = [];
+        const str = typeof val === 'string' ? val : JSON.stringify(val);
+        if (!hints[key].includes(str) && hints[key].length < 5) hints[key].push(str);
       }
     }
     return hints;
-  }, [selectedOperation?.name, requestLog]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [requestLog]);
 
   // ------------------------------------------------------------------
   // Regenerate query whenever state changes

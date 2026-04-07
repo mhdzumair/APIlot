@@ -1295,9 +1295,14 @@ export default defineUnlistedScript(() => {
     frameInfo,
   );
 
-  // Mark this frame as the active interceptor
-  if (!(window.top as any).__APILOT_ACTIVE_FRAME__) {
-    (window.top as any).__APILOT_ACTIVE_FRAME__ = window.location.href;
-    console.log('🎯 [APILOT] This frame will handle API interception:', window.location.href);
+  // Mark this frame as the active interceptor.
+  // Accessing window.top from a cross-origin iframe throws DOMException — guard it.
+  try {
+    if (!(window.top as any).__APILOT_ACTIVE_FRAME__) {
+      (window.top as any).__APILOT_ACTIVE_FRAME__ = window.location.href;
+      console.log('🎯 [APILOT] This frame will handle API interception:', window.location.href);
+    }
+  } catch {
+    // Cross-origin iframe: cannot access window.top properties — each frame runs independently
   }
 });

@@ -25,11 +25,11 @@ import { TimeTravelPanel } from './extensions/TimeTravelPanel';
 const PANEL_TABS = [
   { value: 'monitor', label: 'Monitor' },
   { value: 'rules', label: 'Rules' },
-  { value: 'settings', label: 'Settings' },
   { value: 'analytics', label: 'Analytics' },
   { value: 'timetravel', label: 'Time Travel' },
   { value: 'schema', label: 'Schema' },
   { value: 'builder', label: 'Builder' },
+  { value: 'settings', label: 'Settings' },
 ] as const;
 
 type PanelTab = (typeof PANEL_TABS)[number]['value'];

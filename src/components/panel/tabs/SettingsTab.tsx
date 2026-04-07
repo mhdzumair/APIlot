@@ -282,11 +282,15 @@ export function SettingsTab() {
     { value: '0.85', label: '85%' },
     { value: '0.9', label: '90%' },
     { value: '0.95', label: '95%' },
-    { value: '1.0', label: '100% (default)' },
+    { value: '1', label: '100% (default)' },
     { value: '1.1', label: '110%' },
     { value: '1.2', label: '120%' },
     { value: '1.3', label: '130%' },
   ];
+
+  // Match the stored float against option strings (handles 1.0 → "1" JS coercion)
+  const zoomSelectValue =
+    ZOOM_OPTIONS.find((o) => Math.abs(parseFloat(o.value) - panelZoom) < 0.001)?.value ?? '1';
 
   return (
     <div className="p-4 space-y-8 max-w-2xl mx-auto">
@@ -333,7 +337,7 @@ export function SettingsTab() {
             <Label htmlFor="zoom-select" className="text-sm">Panel Zoom</Label>
             <p className="text-xs text-muted-foreground">Scale the entire DevTools panel layout</p>
           </div>
-          <Select value={String(panelZoom)} onValueChange={handleZoomChange}>
+          <Select value={zoomSelectValue} onValueChange={handleZoomChange}>
             <SelectTrigger id="zoom-select" size="sm" className="w-36">
               <SelectValue placeholder="100%" />
             </SelectTrigger>
