@@ -42,6 +42,8 @@ interface WebRequestBufferEntry {
   parentFrameId: number;
   source: string;
   urlClass?: 'api' | 'static';
+  /** Parsed from POST body when webRequest provides requestBody (Firefox MV2). */
+  graphqlOperationName?: string;
   responseStatus?: number;
   responseStatusText?: string;
   responseHeaders?: unknown;
@@ -154,6 +156,75 @@ export class APITestingCore {
     );
   }
 
+  /**
+   * Collapse URL variants like /graphql/httpcache/... to /graphql so injected
+   * and webRequest paths dedupe against the same logical endpoint.
+   */
+  private normalizeUrlForWebRequestDedup(url: string): string {
+    try {
+      const u = new URL(url);
+      const path = u.pathname;
+      const lower = path.toLowerCase();
+      const marker = '/graphql';
+      const idx = lower.indexOf(marker);
+      if (idx >= 0) {
+        const collapsed = path.slice(0, idx + marker.length);
+        return `${u.origin}${collapsed}`.toLowerCase();
+      }
+      return `${u.origin}${path}`.toLowerCase();
+    } catch {
+      return url.split('?')[0].toLowerCase();
+    }
+  }
+
+  /**
+   * Decode JSON GraphQL POST body from webRequest when `requestBody` extra is enabled.
+   */
+  private tryParseGraphqlOperationFromRequestBody(
+    details: Record<string, unknown>
+  ): string | undefined {
+    const rb = details.requestBody as
+      | {
+          raw?: Array<{ bytes?: ArrayBuffer }>;
+          formData?: Record<string, string[]>;
+        }
+      | undefined;
+    if (!rb?.raw?.length) return undefined;
+    try {
+      const chunks: Uint8Array[] = [];
+      for (const part of rb.raw) {
+        if (part.bytes && part.bytes.byteLength) {
+          chunks.push(new Uint8Array(part.bytes));
+        }
+      }
+      if (chunks.length === 0) return undefined;
+      const total = chunks.reduce((s, c) => s + c.length, 0);
+      const merged = new Uint8Array(total);
+      let offset = 0;
+      for (const c of chunks) {
+        merged.set(c, offset);
+        offset += c.length;
+      }
+      const text = new TextDecoder('utf-8').decode(merged);
+      const trimmed = text.trim();
+      if (!trimmed.startsWith('{') && !trimmed.startsWith('[')) return undefined;
+      const json = JSON.parse(trimmed) as {
+        operationName?: string;
+        query?: string;
+      };
+      if (typeof json.operationName === 'string' && json.operationName.trim()) {
+        return json.operationName.trim();
+      }
+      if (typeof json.query === 'string') {
+        const m = json.query.match(/(?:query|mutation|subscription)\s+(\w+)/i);
+        if (m) return m[1];
+      }
+    } catch {
+      return undefined;
+    }
+    return undefined;
+  }
+
   private setupWebRequestCapture(): void {
     const webRequest =
       (typeof chrome !== 'undefined' && chrome.webRequest) ||
@@ -254,13 +325,27 @@ export class APITestingCore {
         const urlClass = classifyRequest(details.url as string);
         if (!urlClass) return;
 
+        const method = (details.method as string) || 'GET';
+        // CORS preflights have no GraphQL body and duplicate the real POST in the
+        // monitor; skip buffering them for API URLs.
+        if (urlClass === 'api' && method === 'OPTIONS') {
+          return;
+        }
+
+        const graphqlOperationName =
+          urlClass === 'api' &&
+          this.detectRequestType(details.url as string, method) === 'graphql' &&
+          (method === 'POST' || method === 'PUT' || method === 'PATCH')
+            ? this.tryParseGraphqlOperationFromRequestBody(details)
+            : undefined;
+
         const webRequestId = `webreq_${details.requestId}_${details.tabId}`;
 
         const requestData: WebRequestBufferEntry = {
           webRequestId,
           browserRequestId: details.requestId as string,
           url: details.url as string,
-          method: details.method as string,
+          method,
           timestamp: new Date().toISOString(),
           startTime: Date.now(),
           tabId: details.tabId as number,
@@ -269,6 +354,7 @@ export class APITestingCore {
           parentFrameId: details.parentFrameId as number,
           source: 'webRequest',
           urlClass,
+          graphqlOperationName,
         };
 
         const tabId = details.tabId as number;
@@ -521,10 +607,13 @@ export class APITestingCore {
       const logTime = new Date(logEntry.timestamp).getTime();
       if (logTime < recentCutoff) continue;
 
-      if (
-        logEntry.url === webRequest.url &&
-        (logEntry.method ?? 'POST') === webRequest.method
-      ) {
+      const sameMethod = (logEntry.method ?? 'POST') === webRequest.method;
+      const sameUrl =
+        logEntry.url === webRequest.url ||
+        this.normalizeUrlForWebRequestDedup(logEntry.url) ===
+          this.normalizeUrlForWebRequestDedup(webRequest.url);
+
+      if (sameUrl && sameMethod) {
         console.log(
           '[CORE] Duplicate detected, skipping webRequest:',
           webRequest.url
@@ -564,7 +653,7 @@ export class APITestingCore {
           ? this.getAssetName(request.url)
           : requestType === 'rest'
             ? this.generateOperationName(request.url, request.method)
-            : 'WebRequest',
+            : request.graphqlOperationName?.trim() || 'GraphQL',
     };
 
     // Populate matched rules for webRequest-based captures
@@ -1007,9 +1096,10 @@ export class APITestingCore {
 
     const tabBuffer = this.webRequestBuffer?.get(tabId);
     if (tabBuffer) {
+      const normInj = this.normalizeUrlForWebRequestDedup(requestData.url ?? '');
       const matchIndex = tabBuffer.findIndex(
         (r) =>
-          r.url === requestData.url &&
+          this.normalizeUrlForWebRequestDedup(r.url) === normInj &&
           Math.abs(Date.now() - r.startTime) < 3000
       );
       if (matchIndex !== -1) {
