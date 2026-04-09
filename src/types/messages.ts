@@ -129,7 +129,9 @@ export interface MessageResponses {
   };
   ADD_RULE: { success: true; ruleId: string };
   UPDATE_RULE: { success: true };
-  DELETE_RULE: { success: true };
+  DELETE_RULE:
+    | { success: true }
+    | { success: false; error: string };
   EXPORT_RULES: { success: true; data: Array<[string, ApiRule]> };
   IMPORT_RULES: { success: true };
   GET_MATCHING_RULE: {

@@ -139,6 +139,7 @@ export function RuleCard({ ruleId, rule, onEdit, onDelete }: RuleCardProps) {
       {/* Action buttons */}
       <div className="flex items-center gap-2 pt-1">
         <Button
+          type="button"
           variant="outline"
           size="sm"
           className="h-7 text-xs"
@@ -147,6 +148,7 @@ export function RuleCard({ ruleId, rule, onEdit, onDelete }: RuleCardProps) {
           Edit
         </Button>
         <Button
+          type="button"
           variant="outline"
           size="sm"
           className="h-7 text-xs text-destructive hover:bg-destructive hover:text-destructive-foreground"

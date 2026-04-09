@@ -144,7 +144,9 @@ export function PanelApp({ tabId }: PanelAppProps) {
 
         case 'DEVTOOLS_RULE_DELETED':
         case 'RULE_DELETED':
-          rulesStore.deleteRule(message.data.ruleId);
+          if (message.data?.ruleId != null) {
+            rulesStore.deleteRule(String(message.data.ruleId));
+          }
           break;
 
         default:

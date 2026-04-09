@@ -2,6 +2,16 @@ import * as React from 'react';
 import { useState, useRef, useEffect } from 'react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { sendMsg } from '@/lib/messaging';
 import { useRulesStore } from '@/stores/useRulesStore';
 import { RulesList } from '../rules/RulesList';
@@ -24,6 +34,11 @@ export function RulesTab() {
 
   // Hidden file input for import
   const importInputRef = useRef<HTMLInputElement>(null);
+
+  /** DevTools/extension pages: `window.confirm` may not show and can return false — use in-panel dialog. */
+  const [pendingDelete, setPendingDelete] = useState<{ id: string; label: string } | null>(
+    null,
+  );
 
   // Open Add dialog pre-filled when triggered from a request row
   useEffect(() => {
@@ -57,16 +72,29 @@ export function RulesTab() {
   // Delete handler
   // ------------------------------------------------------------------
 
-  async function handleDelete(ruleId: string) {
-    if (!window.confirm('Are you sure you want to delete this rule?')) return;
+  function requestDelete(ruleId: string) {
+    const id = ruleId?.trim();
+    if (!id) return;
+    const rule = rules.get(id);
+    setPendingDelete({ id, label: rule?.name?.trim() || id });
+  }
+
+  async function confirmDelete(ruleId: string) {
+    const id = ruleId.trim();
+    if (!id) return;
+    setPendingDelete(null);
 
     try {
-      const resp = await sendMsg({ type: 'DELETE_RULE', ruleId });
+      const resp = await sendMsg({ type: 'DELETE_RULE', ruleId: id });
       if (resp?.success) {
-        storeDeleteRule(ruleId);
+        storeDeleteRule(id);
         toast.success('Rule deleted.');
       } else {
-        toast.error('Failed to delete rule.');
+        toast.error(
+          resp && 'error' in resp && resp.error
+            ? resp.error
+            : 'Failed to delete rule.',
+        );
       }
     } catch (err) {
       console.error('[RulesTab] delete error:', err);
@@ -203,7 +231,7 @@ export function RulesTab() {
         <RulesList
           rules={rules}
           onEdit={openEditDialog}
-          onDelete={handleDelete}
+          onDelete={requestDelete}
         />
       </div>
 
@@ -214,6 +242,37 @@ export function RulesTab() {
         editingRuleId={editingRuleId}
         editingRule={editingRule}
       />
+
+      <AlertDialog
+        open={pendingDelete !== null}
+        onOpenChange={(open) => {
+          if (!open) setPendingDelete(null);
+        }}
+      >
+        <AlertDialogContent size="sm">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete rule?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {pendingDelete
+                ? `This removes “${pendingDelete.label}”. This cannot be undone.`
+                : ' '}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel type="button">Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              type="button"
+              variant="destructive"
+              onClick={(e) => {
+                e.preventDefault();
+                if (pendingDelete?.id) void confirmDelete(pendingDelete.id);
+              }}
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

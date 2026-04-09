@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useLayoutEffect, useRef } from 'react';
 import { toast } from 'sonner';
 import {
   Dialog,
@@ -67,6 +67,69 @@ interface FormState {
   redirectFilenameOnly: boolean;
 }
 
+function requestTypeShortLabel(rt: RequestType): string {
+  switch (rt) {
+    case 'graphql':
+      return 'GraphQL';
+    case 'rest':
+      return 'REST';
+    case 'both':
+      return 'GQL + REST';
+    case 'static':
+      return 'Static';
+  }
+}
+
+function actionNamePrefix(action: RuleAction, delayMsField: string): string {
+  if (action === 'delay') {
+    const ms = parseInt(delayMsField, 10);
+    return `Delay ${Number.isNaN(ms) ? delayMsField || '0' : ms}ms`;
+  }
+  switch (action) {
+    case 'mock':
+      return 'Mock';
+    case 'block':
+      return 'Block';
+    case 'modify':
+      return 'Modify';
+    case 'redirect':
+      return 'Redirect';
+    case 'passthrough':
+      return 'Passthrough';
+    default:
+      return action;
+  }
+}
+
+/** Suggested name for new rules; updates with type/action until the user edits the name field. */
+function buildAutoRuleName(form: FormState): string {
+  const kind = requestTypeShortLabel(form.requestType);
+  const head = actionNamePrefix(form.action, form.delayMs);
+  let detail = '';
+
+  if (form.requestType === 'graphql' || form.requestType === 'both') {
+    detail = form.operationName.trim();
+  }
+  if (!detail && (form.requestType === 'rest' || form.requestType === 'both')) {
+    detail =
+      form.restEndpoint.trim() ||
+      form.restPath.trim() ||
+      (form.httpMethod && form.httpMethod !== 'ALL' ? form.httpMethod : '');
+  }
+  if (!detail && form.requestType === 'static') {
+    detail =
+      form.restEndpoint.trim() || form.restPath.trim() || form.urlPattern.trim();
+  }
+  if (!detail && (form.requestType === 'graphql' || form.requestType === 'both')) {
+    detail = form.graphqlEndpoint.trim() || form.urlPattern.trim();
+  }
+  if (!detail) {
+    detail = form.urlPattern.trim() || 'Request';
+  }
+  const short = detail.length > 40 ? `${detail.slice(0, 37)}…` : detail;
+  return `${head} · ${kind} · ${short}`;
+}
+
 const DEFAULT_FORM: FormState = {
   name: '',
   enabled: true,
@@ -102,13 +165,18 @@ export function RuleEditorDialog({
   const { addRule, updateRule } = useRulesStore();
   const [form, setForm] = useState<FormState>(DEFAULT_FORM);
   const [saving, setSaving] = useState(false);
+  /** When false on create flows, rule name tracks type/action/target fields automatically. */
+  const nameUserEditedRef = useRef(false);
 
   const isEditing = !!editingRuleId && !!editingRule;
 
-  // Populate form when editing OR pre-filling from a captured request
-  useEffect(() => {
+  // Populate form when editing OR pre-filling from a captured request (layout: before sync effect).
+  useLayoutEffect(() => {
+    if (open) {
+      nameUserEditedRef.current = isEditing;
+    }
     if (open && editingRule) {
-      setForm({
+      const next: FormState = {
         name: editingRule.name ?? '',
         enabled: editingRule.enabled ?? true,
         requestType: editingRule.requestType ?? 'graphql',
@@ -135,11 +203,38 @@ export function RuleEditorDialog({
         redirectUrl: editingRule.redirectUrl ?? '',
         redirectPreservePath: editingRule.redirectPreservePath ?? false,
         redirectFilenameOnly: editingRule.redirectFilenameOnly ?? false,
-      });
+      };
+      if (!isEditing) {
+        next.name = next.name.trim() ? next.name.trim() : buildAutoRuleName(next);
+      }
+      setForm(next);
     } else if (open && !editingRule) {
-      setForm(DEFAULT_FORM);
+      const next = { ...DEFAULT_FORM };
+      next.name = buildAutoRuleName(next);
+      setForm(next);
     }
-  }, [open, editingRule]);
+  }, [open, editingRule, isEditing]);
+
+  // Keep suggested title in sync when user changes type/action/match fields (create only).
+  useEffect(() => {
+    if (!open || isEditing || nameUserEditedRef.current) return;
+    setForm((prev) => {
+      const next = buildAutoRuleName(prev);
+      return next === prev.name ? prev : { ...prev, name: next };
+    });
+  }, [
+    open,
+    isEditing,
+    form.requestType,
+    form.action,
+    form.delayMs,
+    form.operationName,
+    form.restPath,
+    form.restEndpoint,
+    form.graphqlEndpoint,
+    form.urlPattern,
+    form.httpMethod,
+  ]);
 
   function set<K extends keyof FormState>(key: K, value: FormState[K]) {
     setForm((prev) => ({ ...prev, [key]: value }));
@@ -269,7 +364,10 @@ export function RuleEditorDialog({
               id="rule-name"
               placeholder="e.g. Block getUserProfile"
               value={form.name}
-              onChange={(e) => set('name', e.target.value)}
+              onChange={(e) => {
+                nameUserEditedRef.current = true;
+                set('name', e.target.value);
+              }}
               required
             />
           </div>

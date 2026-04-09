@@ -30,7 +30,7 @@ export function MonitorTab() {
       const isRest = ruleFromRequest.requestType === 'rest' || !ruleFromRequest.query;
       setPrefillRule({
         id: '',
-        name: `Mock ${ruleFromRequest.operationName ?? ruleFromRequest.path ?? 'Request'}`,
+        name: '',
         enabled: true,
         requestType: isRest ? 'rest' : 'graphql',
         urlPattern: ruleFromRequest.url ?? '',

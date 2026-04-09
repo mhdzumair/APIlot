@@ -1300,17 +1300,24 @@ export class APITestingCore {
         }
 
         case 'DELETE_RULE': {
-          const deletedRule = this.rules.get(msg.ruleId as string);
-          this.deleteRule(msg.ruleId as string);
+          const ruleId = String(msg.ruleId ?? '').trim();
+          if (!ruleId) {
+            sendResponse({ success: false, error: 'Invalid rule id' });
+            break;
+          }
+          if (!this.rules.has(ruleId)) {
+            sendResponse({ success: false, error: 'Rule not found' });
+            break;
+          }
+
+          this.deleteRule(ruleId);
           await this.saveRules();
 
-          await this.adapter.notifyDevTools('RULE_DELETED', {
-            ruleId: msg.ruleId,
-            rule: deletedRule,
-          });
-
+          // Respond before broadcasting so the DevTools panel gets an ack even if the push fails.
           sendResponse({ success: true });
-          void this.syncRedirectRules();
+
+          // Minimal payload avoids structured-clone edge cases on large rule objects.
+          void this.adapter.notifyDevTools('RULE_DELETED', { ruleId }, null);
           break;
         }
 

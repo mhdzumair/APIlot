@@ -16,3 +16,6 @@ dist/
 .wxt/
 node_modules/
 package-lock.json
+
+# Playwright persistent profile (extension testing)
+.playwright-apilot-profile/
