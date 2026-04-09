@@ -614,6 +614,17 @@ export class APITestingCore {
           this.normalizeUrlForWebRequestDedup(webRequest.url);
 
       if (sameUrl && sameMethod) {
+        // For GraphQL: requests to the same endpoint with different operation names
+        // are distinct requests, not duplicates. Only skip this dedup guard when
+        // both sides have a known (non-fallback) operation name that differs.
+        if (
+          webRequest.graphqlOperationName &&
+          logEntry.operationName &&
+          logEntry.operationName !== 'GraphQL' &&
+          logEntry.operationName !== webRequest.graphqlOperationName
+        ) {
+          continue;
+        }
         console.log(
           '[CORE] Duplicate detected, skipping webRequest:',
           webRequest.url
@@ -1097,11 +1108,18 @@ export class APITestingCore {
     const tabBuffer = this.webRequestBuffer?.get(tabId);
     if (tabBuffer) {
       const normInj = this.normalizeUrlForWebRequestDedup(requestData.url ?? '');
-      const matchIndex = tabBuffer.findIndex(
-        (r) =>
-          this.normalizeUrlForWebRequestDedup(r.url) === normInj &&
-          Math.abs(Date.now() - r.startTime) < 3000
-      );
+      const injOpName = requestData.operationName;
+      const matchIndex = tabBuffer.findIndex((r) => {
+        if (this.normalizeUrlForWebRequestDedup(r.url) !== normInj) return false;
+        if (Math.abs(Date.now() - r.startTime) >= 3000) return false;
+        // For GraphQL: only remove the buffer entry with the same operation name
+        // so that other concurrent operations at the same endpoint remain buffered
+        // and can be logged when their onCompleted fires.
+        if (injOpName && r.graphqlOperationName && injOpName !== r.graphqlOperationName) {
+          return false;
+        }
+        return true;
+      });
       if (matchIndex !== -1) {
         console.log(
           '[CORE] Removing duplicate webRequest buffer entry for:',

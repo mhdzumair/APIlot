@@ -35,6 +35,7 @@ export default defineConfig({
           'activeTab',
           'storage',
           'webRequest',
+          'webNavigation',
           'declarativeNetRequest',
           'declarativeNetRequestWithHostAccess',
         ] as any[],
@@ -58,6 +59,7 @@ export default defineConfig({
         'tabs',
         'webRequest',
         'webRequestBlocking',
+        'webNavigation',
       ] as any[],
       web_accessible_resources: ['injected.js'] as any,
       browser_specific_settings: {

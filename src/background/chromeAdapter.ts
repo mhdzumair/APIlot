@@ -2,6 +2,7 @@ import type { LogEntry } from '../types/requests';
 import type { ApiRule } from '../types/rules';
 import { buildChromeDeclarativeRedirect } from '../shared/ruleMatch';
 import type { BrowserAdapter, StorageData, TabState } from './types';
+import { broadcastTabMessage } from './broadcastTabMessage';
 import { IconManager } from './iconManager';
 
 export class ChromeAdapter implements BrowserAdapter {
@@ -219,9 +220,9 @@ export class ChromeAdapter implements BrowserAdapter {
     data: unknown
   ): Promise<void> {
     try {
-      await chrome.tabs.sendMessage(tabId, { type, data });
+      await broadcastTabMessage(tabId, { type, data });
       console.log(
-        `[CHROME] Content script notified for tab ${tabId}: ${type}`
+        `[CHROME] Content script notified (all frames) for tab ${tabId}: ${type}`
       );
     } catch (error) {
       const msg = (error as Error).message;

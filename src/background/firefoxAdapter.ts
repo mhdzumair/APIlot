@@ -1,6 +1,7 @@
 import { browser } from '../lib/browser';
 import type { LogEntry } from '../types/requests';
 import type { BrowserAdapter, StorageData, TabState } from './types';
+import { broadcastTabMessage } from './broadcastTabMessage';
 import { IconManager } from './iconManager';
 
 export class FirefoxAdapter implements BrowserAdapter {
@@ -204,37 +205,22 @@ export class FirefoxAdapter implements BrowserAdapter {
     data: unknown
   ): Promise<void> {
     try {
-      const result = browser.tabs.sendMessage(tabId, { type, data });
-
-      if (result && typeof result.then === 'function') {
-        result
-          .then(() => {
-            console.log(
-              `[FIREFOX] Content script notified for tab ${tabId}: ${type}`
-            );
-          })
-          .catch((error: Error) => {
-            if (error.message.includes('Could not establish connection')) {
-              console.log(
-                `[FIREFOX] Content script not ready for tab ${tabId} (${type}) - will retry when ready`
-              );
-            } else {
-              console.log(
-                `[FIREFOX] Could not notify content script for tab ${tabId}:`,
-                error.message
-              );
-            }
-          });
+      await broadcastTabMessage(tabId, { type, data });
+      console.log(
+        `[FIREFOX] Content script notified (all frames) for tab ${tabId}: ${type}`
+      );
+    } catch (error) {
+      const msg = (error as Error).message;
+      if (msg.includes('Could not establish connection')) {
+        console.log(
+          `[FIREFOX] Content script not ready for tab ${tabId} (${type}) - will retry when ready`
+        );
       } else {
         console.log(
-          `[FIREFOX] Content script notified for tab ${tabId}: ${type}`
+          `[FIREFOX] Error sending message to tab ${tabId}:`,
+          msg
         );
       }
-    } catch (error) {
-      console.log(
-        `[FIREFOX] Error sending message to tab ${tabId}:`,
-        (error as Error).message
-      );
     }
   }
 
