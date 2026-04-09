@@ -352,11 +352,95 @@ function computeMetrics(requestLog: LogEntry[]): PerformanceMetrics | null {
   };
 }
 
+type TypeFilter = 'all' | 'graphql' | 'rest' | 'static';
+type StatusFilter = 'all' | 'success' | 'error';
+type TimeRange = 'all' | '1m' | '5m' | '30m';
+
+const TIME_RANGE_MS: Record<TimeRange, number> = {
+  all: Infinity,
+  '30m': 30 * 60_000,
+  '5m': 5 * 60_000,
+  '1m': 60_000,
+};
+
+function FilterBar({
+  typeFilter, setTypeFilter,
+  statusFilter, setStatusFilter,
+  timeRange, setTimeRange,
+}: {
+  typeFilter: TypeFilter; setTypeFilter: (v: TypeFilter) => void;
+  statusFilter: StatusFilter; setStatusFilter: (v: StatusFilter) => void;
+  timeRange: TimeRange; setTimeRange: (v: TimeRange) => void;
+}) {
+  const btnBase = 'px-2 py-0.5 rounded text-[10px] font-medium transition-colors';
+  const active = 'bg-foreground text-background';
+  const inactive = 'text-muted-foreground hover:text-foreground hover:bg-muted';
+
+  return (
+    <div className="flex flex-wrap gap-x-4 gap-y-1.5 items-center text-[10px]">
+      <div className="flex items-center gap-1">
+        <span className="text-muted-foreground uppercase tracking-wide mr-0.5">Type</span>
+        {(['all', 'graphql', 'rest', 'static'] as TypeFilter[]).map((v) => (
+          <button key={v} type="button"
+            className={`${btnBase} ${typeFilter === v ? active : inactive}`}
+            onClick={() => setTypeFilter(v)}
+          >
+            {v === 'all' ? 'All' : v === 'graphql' ? 'GQL' : v === 'rest' ? 'REST' : 'Static'}
+          </button>
+        ))}
+      </div>
+      <div className="flex items-center gap-1">
+        <span className="text-muted-foreground uppercase tracking-wide mr-0.5">Status</span>
+        {(['all', 'success', 'error'] as StatusFilter[]).map((v) => (
+          <button key={v} type="button"
+            className={`${btnBase} ${statusFilter === v ? active : inactive}`}
+            onClick={() => setStatusFilter(v)}
+          >
+            {v === 'all' ? 'All' : v === 'success' ? '2xx' : '4xx+'}
+          </button>
+        ))}
+      </div>
+      <div className="flex items-center gap-1">
+        <span className="text-muted-foreground uppercase tracking-wide mr-0.5">Time</span>
+        {(['all', '30m', '5m', '1m'] as TimeRange[]).map((v) => (
+          <button key={v} type="button"
+            className={`${btnBase} ${timeRange === v ? active : inactive}`}
+            onClick={() => setTimeRange(v)}
+          >
+            {v === 'all' ? 'All' : v}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export function AnalyticsDashboard() {
   const requestLog = useMonitorStore((s) => s.requestLog);
   const clearLog = useMonitorStore((s) => s.clearLog);
 
-  const metrics = React.useMemo(() => computeMetrics(requestLog), [requestLog]);
+  const [typeFilter, setTypeFilter] = useState<TypeFilter>('all');
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
+  const [timeRange, setTimeRange] = useState<TimeRange>('all');
+
+  const filteredLog = React.useMemo(() => {
+    const cutoff = timeRange === 'all' ? 0 : Date.now() - TIME_RANGE_MS[timeRange];
+    return requestLog.filter((e) => {
+      if (typeFilter !== 'all' && e.requestType !== typeFilter) return false;
+      if (timeRange !== 'all' && (e.startTime ?? 0) < cutoff) return false;
+      if (statusFilter === 'success') {
+        if (e.responseError) return false;
+        if (e.responseStatus !== undefined && e.responseStatus >= 400) return false;
+      }
+      if (statusFilter === 'error') {
+        const isErr = !!e.responseError || (e.responseStatus !== undefined && e.responseStatus >= 400);
+        if (!isErr) return false;
+      }
+      return true;
+    });
+  }, [requestLog, typeFilter, statusFilter, timeRange]);
+
+  const metrics = React.useMemo(() => computeMetrics(filteredLog), [filteredLog]);
 
   const handleClearData = useCallback(() => {
     clearLog();
@@ -398,8 +482,9 @@ export function AnalyticsDashboard() {
         <div>
           <h2 className="text-sm font-semibold">Analytics</h2>
           <p className="text-xs text-muted-foreground">
-            Metrics reflect the current capture in this tab (since last Clear or reload). Use Clear to
-            start a fresh profiling run.
+            {filteredLog.length !== requestLog.length
+              ? `${filteredLog.length} of ${requestLog.length} requests (filtered)`
+              : `${requestLog.length} requests captured`}
           </p>
         </div>
         <div className="flex gap-2">
@@ -410,6 +495,15 @@ export function AnalyticsDashboard() {
             Clear
           </Button>
         </div>
+      </div>
+
+      {/* Filters */}
+      <div className="shrink-0">
+        <FilterBar
+          typeFilter={typeFilter} setTypeFilter={setTypeFilter}
+          statusFilter={statusFilter} setStatusFilter={setStatusFilter}
+          timeRange={timeRange} setTimeRange={setTimeRange}
+        />
       </div>
 
       {/* Summary cards */}
