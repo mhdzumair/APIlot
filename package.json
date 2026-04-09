@@ -1,7 +1,7 @@
 {
   "name": "apilot",
   "version": "2.2.1",
-  "description": "Your AI copilot for API testing - supports GraphQL and REST with AI-powered mocking, time-travel debugging, and performance analytics",
+  "description": "Your AI copilot for API testing - supports GraphQL and REST with AI-powered mocking, time-travel debugging and performance analytics",
   "keywords": [
     "graphql",
     "rest-api",
