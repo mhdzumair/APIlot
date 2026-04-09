@@ -18,7 +18,7 @@ import type { SelectedOperation } from '@/stores/useBuilderStore';
 const SCALAR_TYPES = new Set(['String', 'Int', 'Float', 'Boolean', 'ID']);
 
 function getBaseTypeName(typeStr: string): string {
-  return typeStr.replace(/[\[\]!]/g, '').trim();
+  return typeStr.replace(/[[\]!]/g, '').trim();
 }
 
 function isScalarType(typeStr: string): boolean {
@@ -641,6 +641,10 @@ function OperationTab({ tab, isActive, onSelect, onClose }: OperationTabProps) {
           : 'hover:bg-muted/60 text-muted-foreground border-t-2 border-t-transparent'
       }`}
       onClick={onSelect}
+      onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && onSelect()}
+      role="tab"
+      tabIndex={0}
+      aria-selected={isActive}
       title={`${tab.operationType} ${tab.name}`}
     >
       <span className={`text-[9px] font-semibold uppercase ${OP_TYPE_COLORS[tab.operationType]}`}>

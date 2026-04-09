@@ -12,7 +12,7 @@ const SCALAR_TYPES = new Set(['String', 'Int', 'Float', 'Boolean', 'ID']);
 
 /** Strip list wrappers and non-null bangs to get bare type name. */
 function getBaseTypeName(typeStr: string): string {
-  return typeStr.replace(/[\[\]!]/g, '').trim();
+  return typeStr.replace(/[[\]!]/g, '').trim();
 }
 
 function isScalarType(typeStr: string): boolean {

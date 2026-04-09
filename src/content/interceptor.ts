@@ -196,6 +196,12 @@ export class APIInterceptor {
     script.onload = () => {
       script.remove();
       window.postMessage({ type: 'APILOT_SET_NETWORK_CAPTURE', payload }, '*');
+      // If checkInitialDevToolsState() resolved BEFORE this script finished loading,
+      // the START_API_MONITORING it sent was silently dropped (no listener yet).
+      // Re-send it now that the injected script's message listener is live.
+      if (this.isMonitoring) {
+        window.postMessage({ type: 'START_API_MONITORING' }, '*');
+      }
     };
     script.onerror = () => console.error('Failed to inject API interceptor script');
     (document.head ?? document.documentElement).appendChild(script);
@@ -364,6 +370,7 @@ export class APIInterceptor {
         headers: payload.headers as Record<string, string> | undefined,
         error: payload.error as string | undefined,
         timestamp: payload.timestamp as string | undefined,
+        transferSize: payload.transferSize as number | undefined,
       };
 
       // Log the response

@@ -11,7 +11,7 @@ import type { SchemaData, SchemaField, SchemaType } from '@/stores/useSchemaStor
 const SCALAR_TYPES = new Set(['String', 'Int', 'Float', 'Boolean', 'ID']);
 
 function getBaseTypeName(typeStr: string): string {
-  return typeStr.replace(/[\[\]!]/g, '').trim();
+  return typeStr.replace(/[[\]!]/g, '').trim();
 }
 
 // ---------------------------------------------------------------------------
@@ -78,7 +78,13 @@ function TypeFieldNode({ field, allTypes, depth, maxDepth, visited }: TypeFieldN
         className={`flex items-center gap-0.5 px-1 py-px rounded-sm text-[11px] group ${
           isExpandable ? 'cursor-pointer hover:bg-muted/40' : ''
         }`}
-        onClick={() => isExpandable && setExpanded((v) => !v)}
+        {...(isExpandable ? {
+          onClick: () => setExpanded((v) => !v),
+          onKeyDown: (e: React.KeyboardEvent) => (e.key === 'Enter' || e.key === ' ') && setExpanded((v) => !v),
+          role: 'button' as const,
+          tabIndex: 0,
+          'aria-expanded': expanded,
+        } : {})}
       >
         <span className="text-[10px] text-muted-foreground w-3 shrink-0 select-none">
           {isExpandable ? (expanded ? '▼' : '▶') : isCircular ? '↺' : '·'}
@@ -283,17 +289,18 @@ function OperationItem({ item, operationType, schema, onBuildOperation }: Operat
   const hasContent = hasArgs || returnTypeObj != null;
 
   const [expanded, setExpanded] = React.useState(false);
-  const [hovered, setHovered] = React.useState(false);
 
   return (
-    <div
-      className="rounded-sm border border-transparent hover:border-border/50 transition-colors"
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
-    >
+    <div className="group rounded-sm border border-transparent hover:border-border/50 transition-colors">
       <div
         className={`flex items-center gap-1 px-2 py-1 ${hasContent ? 'cursor-pointer' : ''}`}
-        onClick={() => hasContent && setExpanded((v) => !v)}
+        {...(hasContent ? {
+          onClick: () => setExpanded((v) => !v),
+          onKeyDown: (e: React.KeyboardEvent) => (e.key === 'Enter' || e.key === ' ') && setExpanded((v) => !v),
+          role: 'button' as const,
+          tabIndex: 0,
+          'aria-expanded': expanded,
+        } : {})}
         title={item.description}
       >
         <span className="text-[10px] text-muted-foreground w-3 shrink-0">
@@ -307,9 +314,9 @@ function OperationItem({ item, operationType, schema, onBuildOperation }: Operat
           </span>
         )}
         <div className="ml-auto flex items-center shrink-0">
-          {onBuildOperation && hovered && (
+          {onBuildOperation && (
             <button
-              className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-primary/10 text-primary hover:bg-primary/20 transition-colors border border-primary/20 whitespace-nowrap"
+              className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-primary/10 text-primary hover:bg-primary/20 transition-colors border border-primary/20 whitespace-nowrap opacity-0 group-hover:opacity-100 focus:opacity-100"
               onClick={(e) => {
                 e.stopPropagation();
                 onBuildOperation(item, operationType);
@@ -427,7 +434,13 @@ function TypeItem({ type, allTypes }: TypeItemProps) {
     <div className="rounded-sm border border-transparent hover:border-border/50 transition-colors">
       <div
         className={`flex items-center gap-1.5 px-2 py-1 ${hasContent ? 'cursor-pointer' : ''}`}
-        onClick={() => hasContent && setExpanded((v) => !v)}
+        {...(hasContent ? {
+          onClick: () => setExpanded((v) => !v),
+          onKeyDown: (e: React.KeyboardEvent) => (e.key === 'Enter' || e.key === ' ') && setExpanded((v) => !v),
+          role: 'button' as const,
+          tabIndex: 0,
+          'aria-expanded': expanded,
+        } : {})}
         title={type.description}
       >
         <span className="text-[10px] text-muted-foreground w-3 shrink-0">

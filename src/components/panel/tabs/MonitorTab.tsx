@@ -1,13 +1,16 @@
-import * as React from 'react';
 import { useState, useEffect } from 'react';
 import { Switch } from '@/components/ui/switch';
 import { useMonitorStore } from '@/stores/useMonitorStore';
 import { RequestList } from '../monitor/RequestList';
 import { RequestFilters } from '../monitor/RequestFilters';
+import { WaterfallView } from '../monitor/WaterfallView';
 import { RuleEditorDialog } from '../rules/RuleEditorDialog';
 import { sendMsg } from '@/lib/messaging';
 import { browser } from '@/lib/browser';
+import { downloadHAR } from '@/lib/harExport';
 import type { ApiRule } from '@/types/rules';
+
+type ViewMode = 'list' | 'waterfall';
 
 export function MonitorTab() {
   const filteredLog = useMonitorStore((s) => s.filteredLog);
@@ -20,6 +23,8 @@ export function MonitorTab() {
   const clearLog = useMonitorStore((s) => s.clearLog);
   const ruleFromRequest = useMonitorStore((s) => s.ruleFromRequest);
   const setRuleFromRequest = useMonitorStore((s) => s.setRuleFromRequest);
+
+  const [viewMode, setViewMode] = useState<ViewMode>('list');
 
   // Rule editor dialog state — opened when user clicks "+ Rule" on a request row
   const [ruleEditorOpen, setRuleEditorOpen] = useState(false);
@@ -97,11 +102,11 @@ export function MonitorTab() {
         <div className="h-3 w-px bg-border/60" />
 
         {/* Request count */}
-        <span className="font-mono text-[11px] text-muted-foreground/60 tabular-nums">
+        <span className="font-mono text-[11px] text-muted-foreground tabular-nums">
           {isFiltered
             ? `${filteredCount}/${totalCount}`
             : `${totalCount}`}
-          <span className="ml-1 text-muted-foreground/40">req</span>
+          <span className="ml-1 text-muted-foreground/70">req</span>
         </span>
 
         <div className="flex-1" />
@@ -114,14 +119,42 @@ export function MonitorTab() {
             onCheckedChange={setAutoScroll}
             className="h-4 w-7"
           />
-          <label htmlFor="auto-scroll" className="text-[12px] cursor-pointer select-none text-muted-foreground/70">
+          <label htmlFor="auto-scroll" className="text-[12px] cursor-pointer select-none text-foreground/70">
             Scroll
           </label>
         </div>
 
+        {/* View mode toggle */}
+        <div className="flex items-center rounded border border-border/40 overflow-hidden">
+          <button
+            className={`h-6 px-2 text-[11px] font-medium transition-colors ${viewMode === 'list' ? 'bg-muted text-foreground' : 'text-foreground/60 hover:text-foreground hover:bg-muted/40'}`}
+            onClick={() => setViewMode('list')}
+            title="List view"
+          >
+            ≡
+          </button>
+          <button
+            className={`h-6 px-2 text-[11px] font-medium transition-colors ${viewMode === 'waterfall' ? 'bg-muted text-foreground' : 'text-foreground/60 hover:text-foreground hover:bg-muted/40'}`}
+            onClick={() => setViewMode('waterfall')}
+            title="Waterfall view"
+          >
+            ▤
+          </button>
+        </div>
+
+        {/* HAR export */}
+        <button
+          className="h-6 px-2 rounded text-[11px] font-medium text-foreground/65 hover:text-foreground hover:bg-muted/40 transition-colors disabled:opacity-40 disabled:cursor-not-allowed border border-transparent hover:border-border/40"
+          onClick={() => downloadHAR(requestLog)}
+          disabled={requestLog.length === 0}
+          title="Export as HAR"
+        >
+          HAR
+        </button>
+
         {/* Clear log */}
         <button
-          className="h-6 px-2 rounded text-[11px] font-medium text-muted-foreground/60 hover:text-red-400 hover:bg-red-500/8 transition-colors disabled:opacity-30 disabled:cursor-not-allowed border border-transparent hover:border-red-500/20"
+          className="h-6 px-2 rounded text-[11px] font-medium text-foreground/65 hover:text-red-400 hover:bg-red-500/8 transition-colors disabled:opacity-40 disabled:cursor-not-allowed border border-transparent hover:border-red-500/20"
           onClick={handleClearLog}
           disabled={requestLog.length === 0}
         >
@@ -132,9 +165,12 @@ export function MonitorTab() {
       {/* Filters */}
       <RequestFilters />
 
-      {/* Request list */}
+      {/* Request list / waterfall */}
       <div className="flex-1 overflow-hidden flex flex-col">
-        <RequestList requests={filteredLog} />
+        {viewMode === 'waterfall'
+          ? <WaterfallView requests={filteredLog} />
+          : <RequestList requests={filteredLog} />
+        }
       </div>
     </div>
   );

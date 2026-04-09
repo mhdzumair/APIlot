@@ -89,6 +89,13 @@ export default defineUnlistedScript(() => {
         responseData = responseText;
       }
 
+      const contentLengthHeader = response.headers.get('content-length');
+      const transferSize = contentLengthHeader
+        ? parseInt(contentLengthHeader, 10)
+        : responseText
+          ? new TextEncoder().encode(responseText).length
+          : 0;
+
       const payload = {
         requestId,
         requestType,
@@ -97,6 +104,7 @@ export default defineUnlistedScript(() => {
         statusText: response.statusText,
         headers: Object.fromEntries(response.headers.entries()),
         timestamp: new Date().toISOString(),
+        transferSize: transferSize || undefined,
       };
 
       window.postMessage({ type: 'API_RESPONSE_CAPTURED', payload }, '*');
@@ -368,7 +376,7 @@ export default defineUnlistedScript(() => {
     // Handle Request object properly
     let actualUrl = url;
     let actualOptions = options;
-    let requestBody = options.body;
+    let requestBody: BodyInit | null | undefined;
 
     if (url instanceof Request) {
       actualUrl = url.url;
@@ -1163,6 +1171,13 @@ export default defineUnlistedScript(() => {
 
           console.log(`📥 [APILOT] XHR response captured for ${requestId}:`, xhr.status);
 
+          const xhrContentLength = parseInt(
+            responseHeaders['content-length'] || responseHeaders['Content-Length'] || '0',
+            10,
+          );
+          const xhrTransferSize = xhrContentLength ||
+            (xhr.responseText ? new TextEncoder().encode(xhr.responseText).length : 0);
+
           window.postMessage(
             {
               type: 'API_RESPONSE_CAPTURED',
@@ -1174,6 +1189,7 @@ export default defineUnlistedScript(() => {
                 statusText: xhr.statusText,
                 headers: responseHeaders,
                 timestamp: new Date().toISOString(),
+                transferSize: xhrTransferSize || undefined,
               },
             },
             '*',

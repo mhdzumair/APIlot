@@ -1,6 +1,6 @@
 {
   "name": "apilot",
-  "version": "2.2.1",
+  "version": "2.3.0",
   "description": "Your AI copilot for API testing - supports GraphQL and REST with AI-powered mocking, time-travel debugging and performance analytics",
   "keywords": [
     "graphql",
@@ -44,6 +44,8 @@
     "package:firefox": "wxt zip -b firefox",
     "package:chrome": "wxt zip -b chrome",
     "clean": "rm -rf dist .wxt",
+    "lint": "eslint src entrypoints",
+    "lint:fix": "eslint src entrypoints --fix",
     "typecheck": "tsc --noEmit",
     "postinstall": "wxt prepare",
     "playwright:extension": "node scripts/playwright-with-apilot.mjs"
@@ -59,6 +61,7 @@
     "zustand": "^5.0.0"
   },
   "devDependencies": {
+    "@eslint/js": "^10.0.1",
     "@radix-ui/react-alert-dialog": "^1.1.15",
     "@radix-ui/react-dialog": "^1.1.15",
     "@radix-ui/react-label": "^2.1.8",
@@ -74,9 +77,15 @@
     "@types/react": "^18.3.0",
     "@types/react-dom": "^18.3.0",
     "@types/webextension-polyfill": "^0.10.0",
+    "@typescript-eslint/eslint-plugin": "^8.58.1",
+    "@typescript-eslint/parser": "^8.58.1",
     "@wxt-dev/module-react": "^1.1.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
+    "eslint": "^10.2.0",
+    "eslint-plugin-jsx-a11y": "^6.10.2",
+    "eslint-plugin-react": "^7.37.5",
+    "eslint-plugin-react-hooks": "^7.0.1",
     "lucide-react": "^1.7.0",
     "playwright": "^1.59.1",
     "shadcn": "^4.1.1",

@@ -52,7 +52,7 @@ export async function broadcastTabMessage(
     return;
   }
 
-  let frames: FrameDetail[] = [];
+  let frames: FrameDetail[];
   try {
     frames = (await wn.getAllFrames({ tabId })) ?? [];
   } catch {

@@ -187,7 +187,7 @@ export function PanelApp({ tabId }: PanelAppProps) {
             </svg>
             <span className="text-[13px] font-bold tracking-tight text-primary">APIlot</span>
             <div className="h-3 w-px bg-border" />
-            <span className="font-mono text-[11px] text-muted-foreground/50">
+            <span className="font-mono text-[11px] text-muted-foreground/75">
               tab&nbsp;{tabId === -1 ? '—' : tabId}
             </span>
           </div>

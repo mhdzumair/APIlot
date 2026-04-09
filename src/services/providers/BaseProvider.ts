@@ -120,13 +120,9 @@ export abstract class BaseProvider {
       ? 'none'
       : ((options.responseMode ?? 'sanitized') as SanitizeMode);
 
-    let prompt = '';
-
-    if (request.requestType === 'graphql') {
-      prompt = this.buildGraphQLPrompt(request, { ...options, responseMode });
-    } else {
-      prompt = this.buildRESTPrompt(request, { ...options, responseMode });
-    }
+    let prompt = request.requestType === 'graphql'
+      ? this.buildGraphQLPrompt(request, { ...options, responseMode })
+      : this.buildRESTPrompt(request, { ...options, responseMode });
 
     if (userContext && userContext.trim()) {
       prompt += `\n\nAdditional Context from User:\n${userContext.trim()}`;

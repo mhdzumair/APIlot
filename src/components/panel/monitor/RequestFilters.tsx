@@ -71,7 +71,7 @@ export function RequestFilters() {
         {/* Search */}
         <div className="relative flex-1 min-w-0">
           <svg
-            className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-muted-foreground/40 pointer-events-none"
+            className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-muted-foreground/55 pointer-events-none"
             fill="none" viewBox="0 0 16 16" stroke="currentColor" strokeWidth="1.5"
           >
             <circle cx="7" cy="7" r="4.5"/>
@@ -81,7 +81,7 @@ export function RequestFilters() {
             placeholder="Filter by URL, operation, method…"
             value={filters.search}
             onChange={(e) => setFilters({ search: e.target.value })}
-            className="h-6 text-[11px] pl-6 bg-muted/30 border-border/40 hover:border-border focus:border-primary/50 placeholder:text-muted-foreground/35"
+            className="h-6 text-[11px] pl-6 bg-muted/30 border-border/40 hover:border-border focus:border-primary/50 placeholder:text-muted-foreground/55"
           />
         </div>
 
@@ -95,7 +95,7 @@ export function RequestFilters() {
                 'px-1.5 py-0.5 rounded text-[10px] font-medium transition-colors',
                 filters.type === opt.value
                   ? 'bg-primary/15 text-primary ring-1 ring-primary/30'
-                  : 'text-muted-foreground/60 hover:text-muted-foreground hover:bg-muted/40'
+                  : 'text-foreground/65 hover:text-foreground hover:bg-muted/40'
               )}
               onClick={() => setFilters({ type: opt.value })}
             >
@@ -107,7 +107,7 @@ export function RequestFilters() {
         {/* Clear */}
         {hasActiveFilters && (
           <button
-            className="shrink-0 h-5 w-5 flex items-center justify-center rounded text-muted-foreground/50 hover:text-foreground hover:bg-muted/40 transition-colors text-[10px]"
+            className="shrink-0 h-5 w-5 flex items-center justify-center rounded text-foreground/65 hover:text-foreground hover:bg-muted/40 transition-colors text-[10px]"
             onClick={() => setFilters({ search: '', type: 'all', status: 'all', method: 'ALL' })}
             title="Clear all filters"
           >
@@ -119,7 +119,7 @@ export function RequestFilters() {
       {/* Row 2: status + method */}
       <div className="flex items-center gap-1.5 px-2.5 pb-1.5">
         {/* Status label */}
-        <span className="text-[10px] text-muted-foreground/40 shrink-0 select-none">
+        <span className="text-[10px] text-muted-foreground shrink-0 select-none font-medium">
           Status
         </span>
 
@@ -132,7 +132,7 @@ export function RequestFilters() {
                 'px-1.5 py-px rounded text-[10px] font-medium transition-colors tabular-nums',
                 filters.status === opt.value
                   ? opt.activeClass
-                  : 'text-muted-foreground/50 hover:text-muted-foreground hover:bg-muted/40'
+                  : 'text-foreground/65 hover:text-foreground hover:bg-muted/40'
               )}
               onClick={() => setFilters({ status: opt.value })}
             >
@@ -144,7 +144,7 @@ export function RequestFilters() {
         <div className="h-3 w-px bg-border/40 shrink-0 mx-0.5" />
 
         {/* Method label */}
-        <span className="text-[10px] text-muted-foreground/40 shrink-0 select-none">
+        <span className="text-[10px] text-muted-foreground shrink-0 select-none font-medium">
           Method
         </span>
 
@@ -162,7 +162,7 @@ export function RequestFilters() {
                         ? 'bg-primary/15 text-primary ring-primary/30'
                         : `bg-muted ${METHOD_STYLES[m] ?? 'text-foreground'} ring-border`
                     )
-                  : 'text-muted-foreground/50 hover:text-muted-foreground hover:bg-muted/40'
+                  : 'text-foreground/65 hover:text-foreground hover:bg-muted/40'
               )}
               onClick={() => setFilters({ method: m })}
             >

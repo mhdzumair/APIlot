@@ -645,6 +645,11 @@ export class APITestingCore {
         ? 'static'
         : this.detectRequestType(request.url, request.method);
 
+    const hdrs = request.responseHeaders as Record<string, string> | undefined;
+    const contentLength = hdrs
+      ? parseInt(hdrs['content-length'] ?? hdrs['Content-Length'] ?? '0', 10)
+      : 0;
+
     const logEntry: LogEntry = {
       id: request.webRequestId,
       tabId: request.tabId,
@@ -658,6 +663,7 @@ export class APITestingCore {
       responseTimestamp: new Date().toISOString(),
       endTime: request.endTime,
       source: 'webRequest',
+      transferSize: contentLength || undefined,
       frameId: request.frameId,
       operationName:
         requestType === 'static'
@@ -1207,6 +1213,7 @@ export class APITestingCore {
         responseTimestamp: responseData.timestamp,
         endTime,
         responseTime,
+        transferSize: responseData.transferSize,
       }
     );
 

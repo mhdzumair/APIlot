@@ -34,6 +34,7 @@ export interface ResponseData {
   headers?: Record<string, string>;
   error?: string;
   timestamp?: string;
+  transferSize?: number;
 }
 
 export interface LogEntry {
@@ -71,6 +72,7 @@ export interface LogEntry {
 
   // Derived fields
   responseTime?: number;
+  transferSize?: number;
 
   // WebRequest-only fields
   frameId?: number;

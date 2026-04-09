@@ -149,7 +149,22 @@ function TimingBadge({ request }: { request: LogEntry }) {
   );
 }
 
-// ─── RequestItem ──────────────────────────────────────────────────────────────
+// ─── Size badge ───────────────────────────────────────────────────────────────
+
+function formatSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes}B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)}kB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)}MB`;
+}
+
+function SizeBadge({ bytes }: { bytes: number | undefined }) {
+  if (!bytes) return null;
+  return (
+    <span className="inline-flex items-center rounded px-1.5 py-px text-[10px] font-mono tabular-nums shrink-0 text-muted-foreground/60">
+      {formatSize(bytes)}
+    </span>
+  );
+}
 
 // ─── Rule action badge ────────────────────────────────────────────────────────
 
@@ -214,7 +229,9 @@ export function RequestItem({ request, isExpanded, onToggle }: RequestItemProps)
           'hover:bg-muted/25 transition-colors duration-100'
         )}
         onClick={onToggle}
+        onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && onToggle()}
         role="button"
+        tabIndex={0}
         aria-expanded={isExpanded}
       >
         {/* Timestamp */}
@@ -244,8 +261,10 @@ export function RequestItem({ request, isExpanded, onToggle }: RequestItemProps)
         <div
           className="flex items-center gap-1.5 shrink-0 ml-1"
           onClick={(e) => e.stopPropagation()}
+          role="presentation"
         >
           <RuleBadge request={request} />
+          <SizeBadge bytes={request.transferSize} />
           <TimingBadge request={request} />
           <StatusBadge status={request.responseStatus} />
 

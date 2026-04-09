@@ -52,10 +52,13 @@ function CollapsibleSection({
   const hasMatch = matchCount > 0;
 
   return (
+    // eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions
     <div
       className={cn('border rounded mb-2', hasMatch && searchTerm && 'border-primary/40')}
       onMouseEnter={() => onHover?.(title)}
       onMouseLeave={() => onHover?.(null)}
+      role="region"
+      aria-label={title}
     >
       <button
         className="flex w-full items-center justify-between px-3 py-2 text-xs font-medium hover:bg-muted/50 transition-colors"
