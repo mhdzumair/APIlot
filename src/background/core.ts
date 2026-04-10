@@ -861,7 +861,31 @@ export class APITestingCore {
       throw new Error('Invalid rules data');
     }
 
-    (data.rules as Partial<ApiRule>[]).forEach((rule) => {
+    const ALLOWED_ACTIONS: ApiRule['action'][] = [
+      'mock', 'delay', 'block', 'modify', 'passthrough', 'redirect',
+    ];
+
+    (data.rules as Partial<ApiRule>[]).forEach((rule, index) => {
+      if (typeof rule !== 'object' || rule === null) {
+        throw new Error(`Rule at index ${index} must be an object`);
+      }
+      if (rule.action !== undefined && !ALLOWED_ACTIONS.includes(rule.action)) {
+        throw new Error(`Rule at index ${index} has invalid action: ${rule.action}`);
+      }
+      if (rule.redirectUrl !== undefined) {
+        if (typeof rule.redirectUrl !== 'string') {
+          throw new Error(`Rule at index ${index} has non-string redirectUrl`);
+        }
+        try {
+          const { protocol } = new URL(rule.redirectUrl);
+          if (protocol !== 'http:' && protocol !== 'https:') {
+            throw new Error(`Rule at index ${index} has disallowed redirect scheme: ${protocol}`);
+          }
+        } catch (e) {
+          if (e instanceof Error && e.message.includes('disallowed redirect scheme')) throw e;
+          throw new Error(`Rule at index ${index} has invalid redirectUrl: ${rule.redirectUrl}`);
+        }
+      }
       this.addRule(rule);
     });
   }

@@ -107,7 +107,7 @@ export class APIInterceptor {
             this.pendingNetworkCapture = { ...this.defaultNetworkCapture(), ...nc };
             window.postMessage(
               { type: 'APILOT_SET_NETWORK_CAPTURE', payload: this.pendingNetworkCapture },
-              '*',
+              window.location.origin || '*',
             );
           }
           sendResponse({ success: true });
@@ -174,9 +174,9 @@ export class APIInterceptor {
     await this.refreshNetworkCaptureSettings();
     this.isMonitoring = true;
     // Re-enable the injected script in case it was stopped by a previous stopMonitoring() call
-    window.postMessage({ type: 'START_API_MONITORING' }, '*');
+    window.postMessage({ type: 'START_API_MONITORING' }, window.location.origin || '*');
     // Push latest network capture settings
-    window.postMessage({ type: 'APILOT_SET_NETWORK_CAPTURE', payload: { ...this.pendingNetworkCapture } }, '*');
+    window.postMessage({ type: 'APILOT_SET_NETWORK_CAPTURE', payload: { ...this.pendingNetworkCapture } }, window.location.origin || '*');
     console.log('[CONTENT] API monitoring started');
   }
 
@@ -184,7 +184,7 @@ export class APIInterceptor {
     this.isMonitoring = false;
     // Always sync the page context — it can be out of sync if STOP was skipped earlier
     // or the injected script used its default state before any START.
-    window.postMessage({ type: 'STOP_API_MONITORING' }, '*');
+    window.postMessage({ type: 'STOP_API_MONITORING' }, window.location.origin || '*');
     console.log('[CONTENT] API monitoring stopped');
   }
 
@@ -195,12 +195,12 @@ export class APIInterceptor {
     const payload = { ...this.pendingNetworkCapture };
     script.onload = () => {
       script.remove();
-      window.postMessage({ type: 'APILOT_SET_NETWORK_CAPTURE', payload }, '*');
+      window.postMessage({ type: 'APILOT_SET_NETWORK_CAPTURE', payload }, window.location.origin || '*');
       // If checkInitialDevToolsState() resolved BEFORE this script finished loading,
       // the START_API_MONITORING it sent was silently dropped (no listener yet).
       // Re-send it now that the injected script's message listener is live.
       if (this.isMonitoring) {
-        window.postMessage({ type: 'START_API_MONITORING' }, '*');
+        window.postMessage({ type: 'START_API_MONITORING' }, window.location.origin || '*');
       }
     };
     script.onerror = () => console.error('Failed to inject API interceptor script');
@@ -229,7 +229,7 @@ export class APIInterceptor {
         console.log('[CONTENT] Extension disabled - skipping request processing');
         window.postMessage(
           { type: 'API_REQUEST_PROCEED', payload: { requestId: payload.requestId } },
-          '*',
+          window.location.origin || '*',
         );
         return;
       }
@@ -265,7 +265,7 @@ export class APIInterceptor {
         console.log('[CONTENT] Tab monitoring disabled or rule check failed — proceeding without rules');
         window.postMessage(
           { type: 'API_REQUEST_PROCEED', payload: { requestId: payload.requestId } },
-          '*',
+          window.location.origin || '*',
         );
         return;
       }
@@ -324,13 +324,13 @@ export class APIInterceptor {
             type: 'APPLY_API_RULES',
             payload: { requestId: payload.requestId, rules: rulesToApply },
           },
-          '*',
+          window.location.origin || '*',
         );
       } else {
         console.log('[CONTENT] No rules apply, proceeding normally');
         window.postMessage(
           { type: 'API_REQUEST_PROCEED', payload: { requestId: payload.requestId } },
-          '*',
+          window.location.origin || '*',
         );
       }
     } catch (error: unknown) {
@@ -338,7 +338,7 @@ export class APIInterceptor {
       // Let request proceed on error
       window.postMessage(
         { type: 'API_REQUEST_PROCEED', payload: { requestId: payload.requestId } },
-        '*',
+        window.location.origin || '*',
       );
     }
   }

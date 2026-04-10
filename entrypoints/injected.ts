@@ -107,7 +107,7 @@ export default defineUnlistedScript(() => {
         transferSize: transferSize || undefined,
       };
 
-      window.postMessage({ type: 'API_RESPONSE_CAPTURED', payload }, '*');
+      window.postMessage({ type: 'API_RESPONSE_CAPTURED', payload }, window.location.origin || '*');
       console.log(`📤 [APILOT] Response message sent for ${requestId}`, payload);
     } catch (error: any) {
       console.error(`❌ [APILOT] Failed to capture response for ${requestId}:`, {
@@ -126,7 +126,7 @@ export default defineUnlistedScript(() => {
         timestamp: new Date().toISOString(),
       };
 
-      window.postMessage({ type: 'API_RESPONSE_CAPTURED', payload: errorPayload }, '*');
+      window.postMessage({ type: 'API_RESPONSE_CAPTURED', payload: errorPayload }, window.location.origin || '*');
       console.log(`📤 [APILOT] Error response message sent for ${requestId}`, errorPayload);
     }
   }
@@ -479,7 +479,7 @@ export default defineUnlistedScript(() => {
       console.log(`📋 [APILOT] ${requestType.toUpperCase()} request detected:`, payload);
 
       // Notify content script about detected request
-      window.postMessage({ type: 'API_REQUEST_DETECTED', payload }, '*');
+      window.postMessage({ type: 'API_REQUEST_DETECTED', payload }, window.location.origin || '*');
 
       // Create a promise for rule handling
       const interceptPromise = new Promise((resolve, reject) => {
@@ -643,6 +643,12 @@ export default defineUnlistedScript(() => {
     const base = (rule.redirectUrl || '').trim();
     if (!base) return null;
     try {
+      const { protocol } = new URL(base);
+      if (protocol !== 'http:' && protocol !== 'https:') return null;
+    } catch {
+      return null;
+    }
+    try {
       const src = new URL(sourceAbsoluteUrl);
       if (rule.redirectFilenameOnly) {
         const segments = src.pathname.split('/').filter(Boolean);
@@ -730,7 +736,7 @@ export default defineUnlistedScript(() => {
           timestamp: new Date().toISOString(),
         };
 
-        window.postMessage({ type: 'API_RESPONSE_CAPTURED', payload: errorPayload }, '*');
+        window.postMessage({ type: 'API_RESPONSE_CAPTURED', payload: errorPayload }, window.location.origin || '*');
         reject(new Error(`Request blocked by APIlot rule: ${blockRule.name}`));
         return;
       }
@@ -939,7 +945,7 @@ export default defineUnlistedScript(() => {
             timestamp: new Date().toISOString(),
           };
 
-          window.postMessage({ type: 'API_RESPONSE_CAPTURED', payload: errorPayload }, '*');
+          window.postMessage({ type: 'API_RESPONSE_CAPTURED', payload: errorPayload }, window.location.origin || '*');
           reject(new Error(`Request blocked by APIlot rule: ${rule.name}`));
           break;
         }
@@ -1048,7 +1054,7 @@ export default defineUnlistedScript(() => {
                 timestamp: new Date().toISOString(),
               },
             },
-            '*',
+            window.location.origin || '*',
           );
         }
         listener(_event);
@@ -1133,7 +1139,7 @@ export default defineUnlistedScript(() => {
 
         console.log(`📋 [APILOT] XHR ${requestType.toUpperCase()} request detected:`, payload);
 
-        window.postMessage({ type: 'API_REQUEST_DETECTED', payload }, '*');
+        window.postMessage({ type: 'API_REQUEST_DETECTED', payload }, window.location.origin || '*');
 
         // Create response handler function and store on xhr for addEventListener wrapper
         const handleXHRResponse = function () {
@@ -1192,7 +1198,7 @@ export default defineUnlistedScript(() => {
                 transferSize: xhrTransferSize || undefined,
               },
             },
-            '*',
+            window.location.origin || '*',
           );
         };
 
@@ -1238,7 +1244,7 @@ export default defineUnlistedScript(() => {
                   timestamp: new Date().toISOString(),
                 },
               },
-              '*',
+              window.location.origin || '*',
             );
           }
           if (originalOnError) {
@@ -1263,7 +1269,7 @@ export default defineUnlistedScript(() => {
                   timestamp: new Date().toISOString(),
                 },
               },
-              '*',
+              window.location.origin || '*',
             );
           }
           if (originalOnTimeout) {
@@ -1290,7 +1296,7 @@ export default defineUnlistedScript(() => {
                   timestamp: new Date().toISOString(),
                 },
               },
-              '*',
+              window.location.origin || '*',
             );
           }
         });

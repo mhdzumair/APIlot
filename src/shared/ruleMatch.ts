@@ -7,6 +7,23 @@
 import type { ApiRule } from '../types/rules';
 
 // ---------------------------------------------------------------------------
+// Security helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Returns true only for http/https URLs.
+ * Prevents javascript:, data:, and other dangerous schemes in redirect targets.
+ */
+export function isAllowedRedirectUrl(url: string): boolean {
+  try {
+    const { protocol } = new URL(url);
+    return protocol === 'http:' || protocol === 'https:';
+  } catch {
+    return false;
+  }
+}
+
+// ---------------------------------------------------------------------------
 // RequestMatchData — all fields needed for rule matching
 // ---------------------------------------------------------------------------
 
@@ -336,6 +353,7 @@ function buildChromeFilenameOnlyRedirect(rule: ApiRule): RedirectAction | null {
   const target = (rule.redirectUrl ?? '').trim();
   const urlPat = (rule.urlPattern ?? '').trim();
   if (!target || !urlPat) return null;
+  if (!isAllowedRedirectUrl(target)) return null;
   let origin: string;
   try {
     origin = new URL(target).origin;
@@ -383,6 +401,7 @@ export function buildChromeDeclarativeRedirect(rule: ApiRule): RedirectAction | 
   const target = (rule.redirectUrl ?? '').trim();
   const urlPat = (rule.urlPattern ?? '').trim();
   if (!target || !urlPat) return null;
+  if (!isAllowedRedirectUrl(target)) return null;
   const pathPat = (rule.restPath ?? '').trim();
   const endpoint = (rule.restEndpoint ?? '').trim();
   const hasPathConstraint = !!(pathPat || endpoint);
@@ -424,6 +443,7 @@ export function buildChromeDeclarativeRedirect(rule: ApiRule): RedirectAction | 
 export function buildRedirectDestination(rule: ApiRule, sourceUrl: string): string | null {
   const base = (rule.redirectUrl ?? '').trim();
   if (!base) return null;
+  if (!isAllowedRedirectUrl(base)) return null;
   try {
     const src = new URL(sourceUrl);
     if (rule.redirectFilenameOnly) {

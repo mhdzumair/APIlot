@@ -40,6 +40,9 @@ export default defineConfig({
           'declarativeNetRequestWithHostAccess',
         ] as any[],
         host_permissions: ['<all_urls>'],
+        content_security_policy: {
+          extension_pages: "script-src 'self'; object-src 'self'",
+        },
         web_accessible_resources: [
           { resources: ['injected.js'], matches: ['<all_urls>'] },
         ] as any,
@@ -61,6 +64,7 @@ export default defineConfig({
         'webRequestBlocking',
         'webNavigation',
       ] as any[],
+      content_security_policy: "script-src 'self'; object-src 'self'",
       web_accessible_resources: ['injected.js'] as any,
       browser_specific_settings: {
         gecko: {
