@@ -4,6 +4,23 @@ All notable changes to **APIlot** are documented in this file. It also includes 
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [2.3.1] — 2026-04-10
+
+### Security
+
+- **Content Security Policy** — Added CSP settings in `wxt.config.ts` to harden the extension against script injection.
+- **postMessage origin** — Updated `window.postMessage` calls across content and injected scripts to use `window.location.origin` instead of `'*'`.
+- **Redirect URL validation** — Added `isAllowedRedirectUrl` to restrict redirect rule targets to `http`/`https` schemes only.
+- **Rule validation** — `APITestingCore` now enforces allowed actions and validates redirect URL format on rule save, with improved error feedback.
+
+### Fixed
+
+- **Log profile** — Verbosity setting now correctly gates background console output. `minimal` suppresses all `[CORE]` debug logs; `basic` shows standard request/response summaries; `detailed` adds low-level noise such as dedup buffer removals. Request entries in the panel are always fully captured regardless of profile.
+- **Theme — first install** — Default theme changed from `light` to `system` so the panel respects the OS dark/light preference immediately on first install without requiring a visit to Settings.
+- **Theme — system mode** — Panel now listens for OS theme changes at runtime and updates live when the system preference changes while the `system` theme is active.
+
+---
+
 ## [2.3.0] — 2026-04-09
 
 ### Added

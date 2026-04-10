@@ -29,7 +29,7 @@ export default defineConfig({
     if (manifestVersion === 3) {
       return {
         name: 'APIlot',
-        version: '2.3.0',
+        version: '2.3.1',
         icons,
         permissions: [
           'activeTab',
@@ -52,7 +52,7 @@ export default defineConfig({
     // Firefox MV2
     return {
       name: 'APIlot',
-      version: '2.3.0',
+      version: '2.3.1',
       icons,
       permissions: [
         'activeTab',
