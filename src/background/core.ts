@@ -1104,6 +1104,16 @@ export class APITestingCore {
   }
 
   // ---------------------------------------------------------------------------
+  // Verbosity helper
+  // ---------------------------------------------------------------------------
+
+  /** Returns true when the current logProfile is at least as verbose as `level`. */
+  private shouldLogAt(level: 'basic' | 'detailed'): boolean {
+    const order: Record<string, number> = { minimal: 0, basic: 1, detailed: 2 };
+    return (order[this.settings.logProfile] ?? 1) >= order[level];
+  }
+
+  // ---------------------------------------------------------------------------
   // Request / response logging
   // ---------------------------------------------------------------------------
 
@@ -1112,12 +1122,14 @@ export class APITestingCore {
     tabId: number | undefined
   ): Promise<void> {
     const requestType = requestData.requestType ?? 'graphql';
-    console.log(`[CORE] Logging ${requestType} request for tab ${tabId}:`, {
-      requestId: requestData.requestId,
-      operationName: requestData.operationName,
-      method: requestData.method,
-      url: requestData.url,
-    });
+    if (this.shouldLogAt('basic')) {
+      console.log(`[CORE] Logging ${requestType} request for tab ${tabId}:`, {
+        requestId: requestData.requestId,
+        operationName: requestData.operationName,
+        method: requestData.method,
+        url: requestData.url,
+      });
+    }
 
     if (!tabId) {
       console.warn('[CORE] No tab ID provided for request logging');
@@ -1151,10 +1163,12 @@ export class APITestingCore {
         return true;
       });
       if (matchIndex !== -1) {
-        console.log(
-          '[CORE] Removing duplicate webRequest buffer entry for:',
-          requestData.url
-        );
+        if (this.shouldLogAt('detailed')) {
+          console.log(
+            '[CORE] Removing duplicate webRequest buffer entry for:',
+            requestData.url
+          );
+        }
         tabBuffer.splice(matchIndex, 1);
       }
     }
@@ -1212,12 +1226,14 @@ export class APITestingCore {
     }
 
     const requestType = responseData.requestType ?? 'graphql';
-    console.log(`[CORE] Logging ${requestType} response for tab ${tabId}:`, {
-      requestId: responseData.requestId,
-      status: responseData.status,
-      hasResponse: !!responseData.response,
-      error: responseData.error,
-    });
+    if (this.shouldLogAt('basic')) {
+      console.log(`[CORE] Logging ${requestType} response for tab ${tabId}:`, {
+        requestId: responseData.requestId,
+        status: responseData.status,
+        hasResponse: !!responseData.response,
+        error: responseData.error,
+      });
+    }
 
     const endTime = Date.now();
     // Peek at existing entry to get startTime so we can include responseTime in the update

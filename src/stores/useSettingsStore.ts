@@ -4,7 +4,7 @@ import type { Settings, AISettings } from '../types/settings';
 
 const DEFAULT_SETTINGS: Settings = {
   logProfile: 'basic',
-  theme: 'light',
+  theme: 'system',
 };
 
 const DEFAULT_AI_SETTINGS: AISettings = {
