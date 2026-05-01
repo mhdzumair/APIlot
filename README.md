@@ -140,11 +140,18 @@ npm run build        # Firefox MV2 + Chrome MV3 + Edge MV3
 1. Open `about:debugging` → **This Firefox**
 2. **Load Temporary Add-on** → select **`dist/firefox-mv2/manifest.json`**
 
-**Firefox for Android (temporary add-on):**
+**Firefox for Android (via ADB — hot reload):**
 
-1. Enable **USB debugging** on your Android device and connect it
-2. Open `about:debugging` on desktop Firefox → **select your device**
-3. **Load Temporary Add-on** → select **`dist/firefox-mv2/manifest.json`**
+```bash
+# Connect your Android device via USB with USB debugging enabled, then:
+npm run dev:firefox-android
+
+# Target a specific device or APK variant:
+npm run dev:firefox-android -- --adb-device <device-serial>
+npm run dev:firefox-android -- --firefox-apk org.mozilla.firefox_beta
+```
+
+Common `--firefox-apk` values: `org.mozilla.fenix` (stable, default), `org.mozilla.firefox_beta`, `org.mozilla.firefox`.
 
 ```bash
 npm run package      # zip all browsers for store submission

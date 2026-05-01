@@ -40,6 +40,7 @@
     "dev:firefox": "wxt -b firefox",
     "dev:chrome": "wxt -b chrome",
     "dev:edge": "wxt -b edge",
+    "dev:firefox-android": "node scripts/run-firefox-android.mjs",
     "build": "wxt build -b firefox && wxt build -b chrome && wxt build -b edge",
     "build:firefox": "wxt build -b firefox",
     "build:chrome": "wxt build -b chrome",
