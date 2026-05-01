@@ -4,9 +4,9 @@
 
 A powerful browser extension for **GraphQL**, **REST**, and **static asset** workflows — development, testing, and debugging. Lives in **browser DevTools** with AI-assisted mock generation, performance analytics, time-travel debugging, and a configurable rule engine.
 
-| Firefox | Chrome |
-|--------|--------|
-| [**Install on Firefox Add-ons**](https://addons.mozilla.org/en-US/firefox/addon/apilot/) | [**Install on Chrome Web Store**](https://chromewebstore.google.com/detail/apilot/ljcjafognoadjggjjapomkgcoclkknhl) |
+| Firefox | Chrome | Edge |
+|--------|--------|------|
+| [**Install on Firefox Add-ons**](https://addons.mozilla.org/en-US/firefox/addon/apilot/) | [**Install on Chrome Web Store**](https://chromewebstore.google.com/detail/apilot/ljcjafognoadjggjjapomkgcoclkknhl) | [**Install on Edge Add-ons**](https://microsoftedge.microsoft.com/addons/detail/apilot) |
 
 **By:** [Mohamed Zumair](https://github.com/mhdzumair) · **License:** [MIT](LICENSE) · **Privacy:** [PRIVACY.md](PRIVACY.md)
 
@@ -107,14 +107,20 @@ Install from [Firefox Add-ons — APIlot](https://addons.mozilla.org/en-US/firef
 
 [Chrome Web Store — APIlot](https://chromewebstore.google.com/detail/apilot/ljcjafognoadjggjjapomkgcoclkknhl)
 
+### Microsoft Edge
+
+[Edge Add-ons — APIlot](https://microsoftedge.microsoft.com/addons/detail/apilot)
+
+Edge is Chromium-based and uses the same Manifest V3 build as Chrome.
+
 ### From source (development)
 
 **Prerequisites:** Node.js 18+ and npm.
 
 ```bash
 npm install
-npm run build        # Firefox MV2 + Chrome MV3
-# or: npm run build:firefox   /   npm run build:chrome
+npm run build        # Firefox MV2 + Chrome MV3 + Edge MV3
+# or: npm run build:firefox / npm run build:chrome / npm run build:edge
 ```
 
 **Chrome (unpacked MV3):**
@@ -122,6 +128,12 @@ npm run build        # Firefox MV2 + Chrome MV3
 1. Open `chrome://extensions`
 2. Enable **Developer mode**
 3. **Load unpacked** → select **`dist/chrome-mv3`**
+
+**Edge (unpacked MV3):**
+
+1. Open `edge://extensions`
+2. Enable **Developer mode**
+3. **Load unpacked** → select **`dist/edge-mv3`**
 
 **Firefox desktop (temporary add-on):**
 
@@ -135,7 +147,7 @@ npm run build        # Firefox MV2 + Chrome MV3
 3. **Load Temporary Add-on** → select **`dist/firefox-mv2/manifest.json`**
 
 ```bash
-npm run package      # zip both browsers for store submission
+npm run package      # zip all browsers for store submission
 npm run lint         # ESLint + jsx-a11y
 npm run typecheck    # TypeScript
 ```
@@ -225,6 +237,7 @@ npm run typecheck    # TypeScript
 | **Firefox** (desktop) | MV2 | **Published** on [AMO](https://addons.mozilla.org/en-US/firefox/addon/apilot/) |
 | **Firefox for Android** | MV2 | **Supported** — same AMO listing; uses standalone panel tab instead of DevTools |
 | **Chrome** (and Chromium browsers) | MV3 | **Published** on [Chrome Web Store](https://chromewebstore.google.com/detail/apilot/ljcjafognoadjggjjapomkgcoclkknhl) |
+| **Microsoft Edge** | MV3 | **Published** on [Edge Add-ons](https://microsoftedge.microsoft.com/addons/detail/apilot) |
 
 ---
 
@@ -267,6 +280,7 @@ Reload the extension; reopen DevTools; look for **APIlot** next to other tool ta
 - [x] **Firefox Add-ons** publication
 - [x] **Firefox for Android** — standalone panel tab fallback when DevTools is unavailable
 - [x] **Chrome Web Store** publication *(v2.3.0)*
+- [x] **Microsoft Edge Add-ons** publication
 - [x] **Transfer size** column (Content-Length / body measurement)
 - [x] **Waterfall timeline** view with hover tooltips and auto-scroll
 - [x] **HAR export** (HAR 1.2 format)
@@ -302,6 +316,7 @@ Reload the extension; reopen DevTools; look for **APIlot** next to other tool ta
 - **Issues:** [GitHub Issues](https://github.com/mhdzumair/apilot/issues)
 - **Firefox listing:** [addons.mozilla.org — APIlot](https://addons.mozilla.org/en-US/firefox/addon/apilot/) (desktop and Android)
 - **Chrome listing:** [Chrome Web Store — APIlot](https://chromewebstore.google.com/detail/apilot/ljcjafognoadjggjjapomkgcoclkknhl)
+- **Edge listing:** [Edge Add-ons — APIlot](https://microsoftedge.microsoft.com/addons/detail/apilot)
 - **Docs:** this README, [PRIVACY.md](PRIVACY.md), and in-extension UI
 
 ---
