@@ -86,8 +86,8 @@ export function StatusCard({ status, loading, onToggleEnabled }: StatusCardProps
           <p className="text-xs text-muted-foreground">
             {status?.enabled
               ? status.devToolsOpen
-                ? 'Monitoring active — DevTools is open'
-                : 'Enabled — Open DevTools to start'
+                ? 'Monitoring active — panel is open'
+                : 'Enabled — open the panel to start'
               : 'Enable to start monitoring API requests'}
           </p>
         </div>
@@ -115,7 +115,7 @@ export function StatusCard({ status, loading, onToggleEnabled }: StatusCardProps
             <path d="m9 12 2 2 4-4" />
           </svg>
           <span>
-            Open DevTools (F12) and navigate to the &ldquo;APIlot&rdquo; tab to start monitoring.
+            Click &ldquo;Open Panel&rdquo; above to start monitoring. On desktop you can also use DevTools (F12) &rarr; APIlot tab.
           </span>
         </div>
       )}

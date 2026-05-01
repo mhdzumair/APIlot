@@ -272,7 +272,7 @@ export class ChromeAdapter implements BrowserAdapter {
     try {
       chrome.runtime
         .sendMessage({
-          action: type,
+          type,
           data,
           tabId,
         })

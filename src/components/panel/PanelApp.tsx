@@ -23,13 +23,13 @@ import { TimeTravelPanel } from './extensions/TimeTravelPanel';
 // ---------------------------------------------------------------------------
 
 const PANEL_TABS = [
-  { value: 'monitor', label: 'Monitor' },
-  { value: 'rules', label: 'Rules' },
-  { value: 'analytics', label: 'Analytics' },
-  { value: 'timetravel', label: 'Time Travel' },
-  { value: 'schema', label: 'Schema' },
-  { value: 'builder', label: 'Builder' },
-  { value: 'settings', label: 'Settings' },
+  { value: 'monitor',    label: 'Monitor',     shortLabel: 'Monitor'   },
+  { value: 'rules',      label: 'Rules',       shortLabel: 'Rules'     },
+  { value: 'analytics',  label: 'Analytics',   shortLabel: 'Analytics' },
+  { value: 'timetravel', label: 'Time Travel', shortLabel: 'Travel'    },
+  { value: 'schema',     label: 'Schema',      shortLabel: 'Schema'    },
+  { value: 'builder',    label: 'Builder',     shortLabel: 'Builder'   },
+  { value: 'settings',   label: 'Settings',    shortLabel: 'Settings'  },
 ] as const;
 
 type PanelTab = (typeof PANEL_TABS)[number]['value'];
@@ -149,6 +149,13 @@ export function PanelApp({ tabId }: PanelAppProps) {
           }
           break;
 
+        case 'DEVTOOLS_TAB_STATUS_UPDATED':
+          // Sync enabled state when toggled from the popup
+          if (message.tabId === tabId) {
+            monitorStore.setEnabled(message.data.enabled);
+          }
+          break;
+
         default:
           break;
       }
@@ -190,24 +197,35 @@ export function PanelApp({ tabId }: PanelAppProps) {
             <span className="font-mono text-[11px] text-muted-foreground/75">
               tab&nbsp;{tabId === -1 ? '—' : tabId}
             </span>
+            <div className="flex-1" />
+            {/* Active tab label — mobile only, shows which section you're in */}
+            <span className="sm:hidden text-[11px] font-medium text-muted-foreground capitalize">
+              {PANEL_TABS.find((t) => t.value === activeTab)?.shortLabel}
+            </span>
           </div>
 
-          {/* Tab bar */}
-          <TabsList variant="line" className="w-full justify-start bg-transparent rounded-none h-auto p-0 gap-0 overflow-x-auto overflow-y-hidden mt-1">
-            {PANEL_TABS.map((tab) => (
-              <TabsTrigger
-                key={tab.value}
-                value={tab.value}
-                className="relative rounded-none h-8 px-3.5 text-[12px] font-medium shrink-0 shadow-none bg-transparent border-0
-                  text-muted-foreground hover:text-foreground transition-colors duration-150
-                  data-[state=active]:text-primary data-[state=active]:font-semibold data-[state=active]:bg-transparent
-                  after:absolute after:bottom-0 after:left-0 after:right-0 after:h-[2px] after:rounded-t after:bg-transparent
-                  data-[state=active]:after:bg-primary"
-              >
-                {tab.label}
-              </TabsTrigger>
-            ))}
-          </TabsList>
+          {/* Tab bar — horizontally scrollable, fade-out on right edge indicates more tabs */}
+          <div className="relative">
+            <TabsList variant="line" className="w-full justify-start bg-transparent rounded-none h-auto p-0 gap-0 overflow-x-auto overflow-y-hidden mt-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+              {PANEL_TABS.map((tab) => (
+                <TabsTrigger
+                  key={tab.value}
+                  value={tab.value}
+                  className="relative rounded-none h-8 px-3 text-[12px] font-medium shrink-0 shadow-none bg-transparent border-0
+                    text-muted-foreground hover:text-foreground transition-colors duration-150
+                    data-[state=active]:text-primary data-[state=active]:font-semibold data-[state=active]:bg-transparent
+                    after:absolute after:bottom-0 after:left-0 after:right-0 after:h-[2px] after:rounded-t after:bg-transparent
+                    data-[state=active]:after:bg-primary"
+                >
+                  {/* Show short label on mobile to fit more tabs */}
+                  <span className="sm:hidden">{tab.shortLabel}</span>
+                  <span className="hidden sm:inline">{tab.label}</span>
+                </TabsTrigger>
+              ))}
+            </TabsList>
+            {/* Right-edge fade to hint at scrollable overflow */}
+            <div className="pointer-events-none absolute right-0 top-0 bottom-0 w-6 bg-gradient-to-l from-card to-transparent" />
+          </div>
         </div>
 
         <TabsContent value="monitor" className="flex-1 overflow-hidden flex flex-col mt-0">

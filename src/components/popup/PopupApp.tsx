@@ -1,4 +1,3 @@
-import * as React from 'react';
 import { useEffect, useState, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
@@ -96,6 +95,16 @@ export function PopupApp() {
         case 'SETTINGS_UPDATED':
           // Nothing theme-specific needed; theme is handled via CSS variables
           break;
+        case 'TAB_STATUS_UPDATED':
+          if (message.tabId === currentTabId) {
+            setStatus((prev) => prev ? {
+              ...prev,
+              enabled: message.data.enabled,
+              isMonitoring: message.data.isMonitoring,
+              devToolsOpen: message.data.devToolsOpen,
+            } : prev);
+          }
+          break;
       }
     }
 
@@ -122,6 +131,17 @@ export function PopupApp() {
       console.error('[PopupApp] toggleEnabled error:', err);
       setStatus((prev) => prev ? { ...prev, enabled: !enabled } : prev);
     }
+  }, [currentTabId]);
+
+  // ------------------------------------------------------------------
+  // Open standalone panel tab (for Firefox mobile or when DevTools unavailable)
+  // ------------------------------------------------------------------
+
+  const handleOpenPanelTab = useCallback(async () => {
+    if (!currentTabId) return;
+    const panelUrl = browser.runtime.getURL(`/panel-tab.html?tabId=${currentTabId}`);
+    await browser.tabs.create({ url: panelUrl });
+    window.close();
   }, [currentTabId]);
 
   // ------------------------------------------------------------------
@@ -160,6 +180,28 @@ export function PopupApp() {
           loading={loading}
           onToggleEnabled={handleToggleEnabled}
         />
+
+        <Button
+          variant="default"
+          size="sm"
+          className="w-full gap-2"
+          onClick={handleOpenPanelTab}
+          disabled={loading || !currentTabId}
+        >
+          <svg
+            width="14"
+            height="14"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+          >
+            <rect x="3" y="3" width="18" height="18" rx="2" />
+            <path d="M3 9h18" />
+            <path d="M9 21V9" />
+          </svg>
+          Open Panel
+        </Button>
 
         <Button
           variant="outline"

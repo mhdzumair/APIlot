@@ -257,7 +257,7 @@ export class FirefoxAdapter implements BrowserAdapter {
   ): Promise<void> {
     try {
       const messagePromise = browser.runtime.sendMessage({
-        action: type,
+        type,
         data,
         tabId,
       });

@@ -226,7 +226,7 @@ export function RequestItem({ request, isExpanded, onToggle }: RequestItemProps)
       <div
         className={cn(
           'flex items-center gap-2 px-2.5 py-2 cursor-pointer select-none',
-          'hover:bg-muted/25 transition-colors duration-100'
+          'hover:bg-muted/25 active:bg-muted/30 transition-colors duration-100'
         )}
         onClick={onToggle}
         onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && onToggle()}
@@ -234,8 +234,8 @@ export function RequestItem({ request, isExpanded, onToggle }: RequestItemProps)
         tabIndex={0}
         aria-expanded={isExpanded}
       >
-        {/* Timestamp */}
-        <span className="font-mono text-[11px] text-muted-foreground shrink-0 tabular-nums w-[64px]">
+        {/* Timestamp — hidden on screens narrower than 400px */}
+        <span className="[@media(max-width:400px)]:hidden font-mono text-[11px] text-muted-foreground shrink-0 tabular-nums w-[58px]">
           {timestamp}
         </span>
 
@@ -255,30 +255,41 @@ export function RequestItem({ request, isExpanded, onToggle }: RequestItemProps)
           <div className="text-[11px] text-muted-foreground truncate mt-px font-mono" title={request.url}>
             {request.url}
           </div>
+          {/* On mobile: show timing + status inline below the URL */}
+          <div className="flex items-center gap-1 mt-0.5 sm:hidden">
+            <TimingBadge request={request} />
+            <StatusBadge status={request.responseStatus} />
+            <RuleBadge request={request} />
+          </div>
         </div>
 
-        {/* Right actions — visible on hover */}
+        {/* Right actions — on desktop: badges + hover-only buttons; on mobile: action buttons always visible */}
         <div
           className="flex items-center gap-1.5 shrink-0 ml-1"
           onClick={(e) => e.stopPropagation()}
           role="presentation"
         >
-          <RuleBadge request={request} />
-          <SizeBadge bytes={request.transferSize} />
-          <TimingBadge request={request} />
-          <StatusBadge status={request.responseStatus} />
+          {/* Badges — hidden on mobile (shown inline under URL instead) */}
+          <div className="hidden sm:flex items-center gap-1.5">
+            <RuleBadge request={request} />
+            <SizeBadge bytes={request.transferSize} />
+            <TimingBadge request={request} />
+            <StatusBadge status={request.responseStatus} />
+          </div>
 
-          {/* Action buttons — shown on row hover */}
-          <div className="flex items-center gap-1 opacity-0 group-hover/row:opacity-100 transition-opacity duration-100">
+          {/* Action buttons:
+              - pointer:fine (mouse) → hidden, fade in on row hover
+              - pointer:coarse (touch) → always visible */}
+          <div className="flex items-center gap-1 [@media(pointer:fine)]:opacity-0 [@media(pointer:fine)]:group-hover/row:opacity-100 transition-opacity duration-100">
             <button
-              className="h-5 px-1.5 rounded text-[10px] font-medium text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-colors border border-border/50 hover:border-border"
+              className="h-6 sm:h-5 px-2 sm:px-1.5 rounded text-[10px] font-medium text-muted-foreground hover:text-foreground active:text-foreground hover:bg-muted/60 active:bg-muted/60 transition-colors border border-border/50 hover:border-border"
               title="Create rule from this request"
               onClick={() => setRuleFromRequest(request)}
             >
               + Rule
             </button>
             <button
-              className="h-5 px-1.5 rounded text-[10px] font-medium text-primary/70 hover:text-primary hover:bg-primary/10 transition-colors border border-primary/20 hover:border-primary/40"
+              className="h-6 sm:h-5 px-2 sm:px-1.5 rounded text-[10px] font-medium text-primary/70 hover:text-primary active:text-primary hover:bg-primary/10 active:bg-primary/10 transition-colors border border-primary/20 hover:border-primary/40"
               title="Generate AI mock"
               onClick={() => setAiMockRequest(request)}
             >

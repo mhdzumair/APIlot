@@ -84,9 +84,9 @@ export function MonitorTab() {
         editingRuleId={null}
         editingRule={prefillRule}
       />
-      {/* Toolbar */}
-      <div className="flex items-center gap-2 px-2.5 py-1.5 border-b border-border/50 shrink-0 bg-card/40">
-        {/* Enable/disable toggle */}
+      {/* Toolbar — wraps into two rows on narrow screens */}
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-1 px-2.5 py-1.5 border-b border-border/50 shrink-0 bg-card/40">
+        {/* Left group: enable/disable + request count */}
         <div className="flex items-center gap-1.5">
           <Switch
             id="monitor-enabled"
@@ -99,7 +99,7 @@ export function MonitorTab() {
           </label>
         </div>
 
-        <div className="h-3 w-px bg-border/60" />
+        <div className="h-3 w-px bg-border/60 hidden sm:block" />
 
         {/* Request count */}
         <span className="font-mono text-[11px] text-muted-foreground tabular-nums">
@@ -109,57 +109,63 @@ export function MonitorTab() {
           <span className="ml-1 text-muted-foreground/70">req</span>
         </span>
 
+        {/* Push right-side controls to the end */}
         <div className="flex-1" />
 
-        {/* Auto-scroll toggle */}
-        <div className="flex items-center gap-1.5">
-          <Switch
-            id="auto-scroll"
-            checked={autoScroll}
-            onCheckedChange={setAutoScroll}
-            className="h-4 w-7"
-          />
-          <label htmlFor="auto-scroll" className="text-[12px] cursor-pointer select-none text-foreground/70">
-            Scroll
-          </label>
-        </div>
+        {/* Right group: all secondary controls together */}
+        <div className="flex items-center gap-1.5 flex-wrap justify-end">
+          {/* Auto-scroll toggle */}
+          <div className="flex items-center gap-1.5">
+            <Switch
+              id="auto-scroll"
+              checked={autoScroll}
+              onCheckedChange={setAutoScroll}
+              className="h-4 w-7"
+            />
+            <label htmlFor="auto-scroll" className="text-[12px] cursor-pointer select-none text-foreground/70">
+              Scroll
+            </label>
+          </div>
 
-        {/* View mode toggle */}
-        <div className="flex items-center rounded border border-border/40 overflow-hidden">
+          <div className="h-3 w-px bg-border/40" />
+
+          {/* View mode toggle */}
+          <div className="flex items-center rounded border border-border/40 overflow-hidden">
+            <button
+              className={`h-6 px-2 text-[11px] font-medium transition-colors ${viewMode === 'list' ? 'bg-muted text-foreground' : 'text-foreground/60 hover:text-foreground hover:bg-muted/40'}`}
+              onClick={() => setViewMode('list')}
+              title="List view"
+            >
+              ≡
+            </button>
+            <button
+              className={`h-6 px-2 text-[11px] font-medium transition-colors ${viewMode === 'waterfall' ? 'bg-muted text-foreground' : 'text-foreground/60 hover:text-foreground hover:bg-muted/40'}`}
+              onClick={() => setViewMode('waterfall')}
+              title="Waterfall view"
+            >
+              ▤
+            </button>
+          </div>
+
+          {/* HAR export */}
           <button
-            className={`h-6 px-2 text-[11px] font-medium transition-colors ${viewMode === 'list' ? 'bg-muted text-foreground' : 'text-foreground/60 hover:text-foreground hover:bg-muted/40'}`}
-            onClick={() => setViewMode('list')}
-            title="List view"
+            className="h-6 px-2 rounded text-[11px] font-medium text-foreground/65 hover:text-foreground hover:bg-muted/40 transition-colors disabled:opacity-40 disabled:cursor-not-allowed border border-transparent hover:border-border/40"
+            onClick={() => downloadHAR(requestLog)}
+            disabled={requestLog.length === 0}
+            title="Export as HAR"
           >
-            ≡
+            HAR
           </button>
+
+          {/* Clear log */}
           <button
-            className={`h-6 px-2 text-[11px] font-medium transition-colors ${viewMode === 'waterfall' ? 'bg-muted text-foreground' : 'text-foreground/60 hover:text-foreground hover:bg-muted/40'}`}
-            onClick={() => setViewMode('waterfall')}
-            title="Waterfall view"
+            className="h-6 px-2 rounded text-[11px] font-medium text-foreground/65 hover:text-red-400 hover:bg-red-500/8 transition-colors disabled:opacity-40 disabled:cursor-not-allowed border border-transparent hover:border-red-500/20"
+            onClick={handleClearLog}
+            disabled={requestLog.length === 0}
           >
-            ▤
+            Clear
           </button>
         </div>
-
-        {/* HAR export */}
-        <button
-          className="h-6 px-2 rounded text-[11px] font-medium text-foreground/65 hover:text-foreground hover:bg-muted/40 transition-colors disabled:opacity-40 disabled:cursor-not-allowed border border-transparent hover:border-border/40"
-          onClick={() => downloadHAR(requestLog)}
-          disabled={requestLog.length === 0}
-          title="Export as HAR"
-        >
-          HAR
-        </button>
-
-        {/* Clear log */}
-        <button
-          className="h-6 px-2 rounded text-[11px] font-medium text-foreground/65 hover:text-red-400 hover:bg-red-500/8 transition-colors disabled:opacity-40 disabled:cursor-not-allowed border border-transparent hover:border-red-500/20"
-          onClick={handleClearLog}
-          disabled={requestLog.length === 0}
-        >
-          Clear
-        </button>
       </div>
 
       {/* Filters */}

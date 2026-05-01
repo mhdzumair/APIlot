@@ -19,6 +19,7 @@ export type BackgroundToDevToolsMessage =
   | { type: 'DEVTOOLS_RULE_ADDED'; data: { ruleId: string; rule: ApiRule } }
   | { type: 'DEVTOOLS_RULE_UPDATED'; data: { ruleId: string; rule: ApiRule } }
   | { type: 'DEVTOOLS_RULE_DELETED'; data: { ruleId: string; rule?: ApiRule } }
+  | { type: 'DEVTOOLS_TAB_STATUS_UPDATED'; tabId: number; data: { enabled: boolean; isMonitoring: boolean; devToolsOpen: boolean } }
   | { type: 'TAB_NAVIGATED'; tabId: number; url: string }
   // raw push names used by notifyDevTools (without the DEVTOOLS_ prefix)
   | { type: 'REQUEST_LOGGED'; tabId: number; data: LogEntry }
@@ -34,7 +35,8 @@ export type BackgroundToDevToolsMessage =
 export type BackgroundToPopupMessage =
   | { type: 'RULES_UPDATED'; data: { ruleId: string; rule: ApiRule } }
   | { type: 'SETTINGS_UPDATED'; data: Partial<Settings> }
-  | { type: 'REQUEST_LOGGED'; tabId: number; data: LogEntry };
+  | { type: 'REQUEST_LOGGED'; tabId: number; data: LogEntry }
+  | { type: 'TAB_STATUS_UPDATED'; tabId: number; data: { enabled: boolean; isMonitoring: boolean; devToolsOpen: boolean } };
 
 // ---------------------------------------------------------------------------
 // Panel / DevTools → Background request messages
