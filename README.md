@@ -76,8 +76,17 @@ A powerful browser extension for **GraphQL**, **REST**, and **static asset** wor
 - Record request/response sequences, replay with controls, edit responses mid-replay
 - **Export / import** sessions
 
+### Firefox for Android (mobile)
+
+Firefox for Android does not support the DevTools extension API, so the DevTools panel is unavailable. APIlot handles this with a **standalone panel tab** that opens as a regular browser tab instead.
+
+- Tap the **APIlot toolbar icon** → **Open Panel** to launch the full monitoring and rules UI in a new tab
+- All core features work: request monitoring, rules, analytics, time-travel debugging, and AI mocks
+- The popup also shows current monitoring status and lets you toggle it without opening the panel
+
 ### Developer experience
-- **DevTools** panel integration
+- **DevTools** panel integration (desktop browsers)
+- **Standalone panel tab** for Firefox for Android and any browser where DevTools is unavailable
 - Local storage for rules and settings (AI calls go to the provider you pick)
 - **ESLint** with `eslint-plugin-jsx-a11y` enforcing WCAG-compliant accessible markup
 - Configurable **logging levels** (Silent → Debug)
@@ -86,9 +95,13 @@ A powerful browser extension for **GraphQL**, **REST**, and **static asset** wor
 
 ## Installation
 
-### Firefox
+### Firefox (desktop)
 
 [Firefox Add-ons — APIlot](https://addons.mozilla.org/en-US/firefox/addon/apilot/)
+
+### Firefox for Android
+
+Install from [Firefox Add-ons — APIlot](https://addons.mozilla.org/en-US/firefox/addon/apilot/) on Firefox for Android. Because DevTools is unavailable on mobile, tap the **APIlot icon → Open Panel** to launch the full UI in a browser tab.
 
 ### Chrome
 
@@ -110,10 +123,16 @@ npm run build        # Firefox MV2 + Chrome MV3
 2. Enable **Developer mode**
 3. **Load unpacked** → select **`dist/chrome-mv3`**
 
-**Firefox (temporary add-on):**
+**Firefox desktop (temporary add-on):**
 
 1. Open `about:debugging` → **This Firefox**
 2. **Load Temporary Add-on** → select **`dist/firefox-mv2/manifest.json`**
+
+**Firefox for Android (temporary add-on):**
+
+1. Enable **USB debugging** on your Android device and connect it
+2. Open `about:debugging` on desktop Firefox → **select your device**
+3. **Load Temporary Add-on** → select **`dist/firefox-mv2/manifest.json`**
 
 ```bash
 npm run package      # zip both browsers for store submission
@@ -203,7 +222,8 @@ npm run typecheck    # TypeScript
 
 | Browser | Manifest | Status |
 |---------|-----------|--------|
-| **Firefox** | MV2 | **Published** on [AMO](https://addons.mozilla.org/en-US/firefox/addon/apilot/) |
+| **Firefox** (desktop) | MV2 | **Published** on [AMO](https://addons.mozilla.org/en-US/firefox/addon/apilot/) |
+| **Firefox for Android** | MV2 | **Supported** — same AMO listing; uses standalone panel tab instead of DevTools |
 | **Chrome** (and Chromium browsers) | MV3 | **Published** on [Chrome Web Store](https://chromewebstore.google.com/detail/apilot/ljcjafognoadjggjjapomkgcoclkknhl) |
 
 ---
@@ -245,6 +265,7 @@ Reload the extension; reopen DevTools; look for **APIlot** next to other tool ta
 - [x] Time-travel record / replay / export
 - [x] Dual build: **Firefox MV2** + **Chrome MV3** (WXT)
 - [x] **Firefox Add-ons** publication
+- [x] **Firefox for Android** — standalone panel tab fallback when DevTools is unavailable
 - [x] **Chrome Web Store** publication *(v2.3.0)*
 - [x] **Transfer size** column (Content-Length / body measurement)
 - [x] **Waterfall timeline** view with hover tooltips and auto-scroll
@@ -279,7 +300,7 @@ Reload the extension; reopen DevTools; look for **APIlot** next to other tool ta
 ## Support
 
 - **Issues:** [GitHub Issues](https://github.com/mhdzumair/apilot/issues)
-- **Firefox listing:** [addons.mozilla.org — APIlot](https://addons.mozilla.org/en-US/firefox/addon/apilot/)
+- **Firefox listing:** [addons.mozilla.org — APIlot](https://addons.mozilla.org/en-US/firefox/addon/apilot/) (desktop and Android)
 - **Chrome listing:** [Chrome Web Store — APIlot](https://chromewebstore.google.com/detail/apilot/ljcjafognoadjggjjapomkgcoclkknhl)
 - **Docs:** this README, [PRIVACY.md](PRIVACY.md), and in-extension UI
 
