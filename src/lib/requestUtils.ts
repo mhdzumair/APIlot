@@ -88,3 +88,43 @@ export function getTimingDisplay(request: LogEntry): string {
   }
   return '...';
 }
+
+const DEFAULT_MOCK_RESPONSE = '{\n  "data": {}\n}';
+
+/** Format a captured network response for use as a mock rule body. */
+export function formatResponseForMock(response: unknown): string {
+  if (response === undefined || response === null) {
+    return DEFAULT_MOCK_RESPONSE;
+  }
+  if (typeof response === 'string') {
+    const trimmed = response.trim();
+    if (!trimmed) return DEFAULT_MOCK_RESPONSE;
+    try {
+      JSON.parse(trimmed);
+      return trimmed;
+    } catch {
+      return JSON.stringify(response, null, 2);
+    }
+  }
+  try {
+    return JSON.stringify(response, null, 2);
+  } catch {
+    return DEFAULT_MOCK_RESPONSE;
+  }
+}
+
+/** Best-effort GraphQL endpoint path from a request URL (e.g. `/graphql`). */
+export function extractGraphqlEndpointFromUrl(url: string): string {
+  try {
+    const pathname = new URL(url).pathname;
+    const lower = pathname.toLowerCase();
+    const marker = '/graphql';
+    const idx = lower.indexOf(marker);
+    if (idx >= 0) {
+      return pathname.slice(0, idx + marker.length) || marker;
+    }
+    return pathname || '/graphql';
+  } catch {
+    return '/graphql';
+  }
+}

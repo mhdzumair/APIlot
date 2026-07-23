@@ -167,6 +167,8 @@ export function RuleEditorDialog({
   const [saving, setSaving] = useState(false);
   /** When false on create flows, rule name tracks type/action/target fields automatically. */
   const nameUserEditedRef = useRef(false);
+  /** Response captured from a monitor row when creating a rule from a request. */
+  const capturedMockResponseRef = useRef<string | null>(null);
 
   const isEditing = !!editingRuleId && !!editingRule;
 
@@ -176,6 +178,14 @@ export function RuleEditorDialog({
       nameUserEditedRef.current = isEditing;
     }
     if (open && editingRule) {
+      const mockFromRule =
+        editingRule.mockResponse != null
+          ? typeof editingRule.mockResponse === 'string'
+            ? editingRule.mockResponse
+            : JSON.stringify(editingRule.mockResponse, null, 2)
+          : DEFAULT_FORM.mockResponse;
+      capturedMockResponseRef.current = !isEditing ? mockFromRule : null;
+
       const next: FormState = {
         name: editingRule.name ?? '',
         enabled: editingRule.enabled ?? true,
@@ -192,12 +202,7 @@ export function RuleEditorDialog({
           ? JSON.stringify(editingRule.queryFilter, null, 2)
           : '',
         bodyPattern: editingRule.bodyPattern ?? '',
-        mockResponse:
-          editingRule.mockResponse != null
-            ? typeof editingRule.mockResponse === 'string'
-              ? editingRule.mockResponse
-              : JSON.stringify(editingRule.mockResponse, null, 2)
-            : '{\n  "data": {}\n}',
+        mockResponse: mockFromRule,
         statusCode: editingRule.statusCode != null ? String(editingRule.statusCode) : '200',
         delayMs: editingRule.delay != null ? String(editingRule.delay) : '1000',
         redirectUrl: editingRule.redirectUrl ?? '',
@@ -209,9 +214,12 @@ export function RuleEditorDialog({
       }
       setForm(next);
     } else if (open && !editingRule) {
+      capturedMockResponseRef.current = null;
       const next = { ...DEFAULT_FORM };
       next.name = buildAutoRuleName(next);
       setForm(next);
+    } else if (!open) {
+      capturedMockResponseRef.current = null;
     }
   }, [open, editingRule, isEditing]);
 
@@ -564,7 +572,16 @@ export function RuleEditorDialog({
             <Select
               value={form.action}
               onValueChange={(v) => {
-                set('action', v as RuleAction);
+                const action = v as RuleAction;
+                if (action === 'mock' && capturedMockResponseRef.current) {
+                  setForm((prev) => ({
+                    ...prev,
+                    action,
+                    mockResponse: capturedMockResponseRef.current ?? prev.mockResponse,
+                  }));
+                } else {
+                  set('action', action);
+                }
                 // Reset to redirect when switching to static if action is incompatible
                 if (isStaticType && v !== 'redirect' && v !== 'block') {
                   set('action', 'redirect');

@@ -112,6 +112,9 @@ export const useMonitorStore = create<MonitorState>((set) => ({
 
   addRequest: (entry) =>
     set((state) => {
+      if (state.requestLog.some((existing) => existing.id === entry.id)) {
+        return state;
+      }
       const requestLog = [...state.requestLog, entry];
       return {
         requestLog,

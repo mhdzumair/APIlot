@@ -116,15 +116,12 @@ export function PanelApp({ tabId }: PanelAppProps) {
     function handleMessage(message: BackgroundToDevToolsMessage) {
       switch (message.type) {
         case 'DEVTOOLS_REQUEST_LOGGED':
-        case 'REQUEST_LOGGED':
-          // Only process request logs for this specific tab
+          // DevTools panel receives DEVTOOLS_* messages only — REQUEST_LOGGED is for the popup.
           if (message.tabId && message.tabId !== tabId) return;
           monitorStore.addRequest(message.data);
           break;
 
         case 'DEVTOOLS_RESPONSE_LOGGED':
-        case 'RESPONSE_LOGGED':
-          // Only process response logs for this specific tab
           if (message.tabId && message.tabId !== tabId) return;
           monitorStore.updateRequest(message.data.id, message.data);
           break;

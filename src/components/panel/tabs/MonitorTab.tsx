@@ -9,6 +9,10 @@ import { sendMsg } from '@/lib/messaging';
 import { browser } from '@/lib/browser';
 import { downloadHAR } from '@/lib/harExport';
 import type { ApiRule } from '@/types/rules';
+import {
+  extractGraphqlEndpointFromUrl,
+  formatResponseForMock,
+} from '@/lib/requestUtils';
 
 type ViewMode = 'list' | 'waterfall';
 
@@ -33,6 +37,7 @@ export function MonitorTab() {
   useEffect(() => {
     if (ruleFromRequest) {
       const isRest = ruleFromRequest.requestType === 'rest' || !ruleFromRequest.query;
+      const isGraphql = ruleFromRequest.requestType === 'graphql' || !!ruleFromRequest.query;
       setPrefillRule({
         id: '',
         name: '',
@@ -40,9 +45,15 @@ export function MonitorTab() {
         requestType: isRest ? 'rest' : 'graphql',
         urlPattern: ruleFromRequest.url ?? '',
         operationName: ruleFromRequest.operationName,
+        graphqlEndpoint: isGraphql
+          ? extractGraphqlEndpointFromUrl(ruleFromRequest.url ?? '')
+          : undefined,
+        httpMethod: ruleFromRequest.method ?? 'ALL',
+        restPath: ruleFromRequest.path,
+        restEndpoint: ruleFromRequest.endpoint,
         action: 'mock',
-        statusCode: 200,
-        mockResponse: '{}',
+        statusCode: ruleFromRequest.responseStatus ?? 200,
+        mockResponse: formatResponseForMock(ruleFromRequest.response),
       } as ApiRule);
       setRuleEditorOpen(true);
       setRuleFromRequest(null);
