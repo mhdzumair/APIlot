@@ -1,9 +1,14 @@
 import type { LogEntry } from '../types/requests';
 import type { ApiRule } from '../types/rules';
-import { buildChromeDeclarativeRedirect } from '../shared/ruleMatch';
+import { buildAllChromeDeclarativeRedirects } from '../shared/ruleMatch';
 import type { BrowserAdapter, StorageData, TabState } from './types';
 import { broadcastTabMessage } from './broadcastTabMessage';
 import { IconManager } from './iconManager';
+import {
+  repairChromeStorageIfNeeded,
+  safeChromeStorageSet,
+  slimTabStatesRecord,
+} from './storageUtils';
 
 export class ChromeAdapter implements BrowserAdapter {
   private tabStates: Map<number | string, TabState>;
@@ -21,17 +26,24 @@ export class ChromeAdapter implements BrowserAdapter {
   }
 
   async loadFromStorage(keys: string[]): Promise<Partial<StorageData>> {
-    return (await chrome.storage.local.get(keys)) || {};
+    await repairChromeStorageIfNeeded();
+    const data = (await chrome.storage.local.get(keys)) as Partial<StorageData>;
+    if (data.tabStates) {
+      data.tabStates = slimTabStatesRecord(
+        data.tabStates as Record<string, TabState>
+      );
+    }
+    return data;
   }
 
   async saveToStorage(data: Partial<StorageData>): Promise<void> {
-    await chrome.storage.local.set(data);
+    await safeChromeStorageSet(data);
   }
 
   async initializeTabStates(tabStatesData?: Record<string, TabState>): Promise<void> {
     if (tabStatesData) {
       this.tabStates = new Map();
-      for (const [k, v] of Object.entries(tabStatesData)) {
+      for (const [k, v] of Object.entries(slimTabStatesRecord(tabStatesData))) {
         const num = Number(k);
         const key =
           !Number.isNaN(num) && String(num) === String(k).trim() ? num : k;
@@ -41,7 +53,11 @@ export class ChromeAdapter implements BrowserAdapter {
   }
 
   async getTabStatesForStorage(): Promise<Record<string, TabState>> {
-    return Object.fromEntries(this.tabStates);
+    const out: Record<string, TabState> = {};
+    for (const [k, v] of this.tabStates) {
+      out[String(k)] = { enabled: v.enabled, devToolsOpen: v.devToolsOpen, requestLog: [] };
+    }
+    return out;
   }
 
   /** Synchronous read for webRequest hot path. */
@@ -60,6 +76,16 @@ export class ChromeAdapter implements BrowserAdapter {
     return null;
   }
 
+  getFirstEnabledTabId(): number | null {
+    for (const [id, state] of this.tabStates) {
+      if (state.enabled) {
+        const n = typeof id === 'number' ? id : Number(id);
+        return Number.isNaN(n) ? null : n;
+      }
+    }
+    return null;
+  }
+
   async getTabState(tabId: number): Promise<TabState> {
     const canonical: number | string =
       typeof tabId === 'number' && !Number.isNaN(tabId)
@@ -70,7 +96,9 @@ export class ChromeAdapter implements BrowserAdapter {
 
     if (!this.tabStates.has(canonical)) {
       const data = await chrome.storage.local.get(['tabStates']);
-      const stored = (data.tabStates as Record<string, TabState>) || {};
+      const stored = slimTabStatesRecord(
+        (data.tabStates as Record<string, TabState>) || {}
+      );
       const fromStore =
         stored[canonical as unknown as string] ?? stored[String(canonical)];
       if (fromStore) {
@@ -97,12 +125,17 @@ export class ChromeAdapter implements BrowserAdapter {
     await this.persistTabState(tabId);
   }
 
-  async persistTabState(tabId: number): Promise<void> {
-    const data = await chrome.storage.local.get(['tabStates']);
-    const tabStates = (data.tabStates as Record<string, TabState>) || {};
-    const state = this.peekTabState(tabId) ?? (await this.getTabState(tabId));
-    tabStates[String(tabId)] = state;
-    await chrome.storage.local.set({ tabStates });
+  async persistTabState(_tabId: number): Promise<void> {
+    try {
+      await safeChromeStorageSet({
+        tabStates: await this.getTabStatesForStorage(),
+      });
+    } catch (error) {
+      console.warn(
+        '[CHROME] Could not persist tab states:',
+        (error as Error)?.message ?? error
+      );
+    }
   }
 
   updateTabBadge(tabId: number): void {
@@ -149,7 +182,6 @@ export class ChromeAdapter implements BrowserAdapter {
 
     this.updateTabBadge(tabId);
     await this.iconManager.updateIconForTabState(tabState, tabId);
-    await this.persistTabState(tabId);
   }
 
   async cleanupTabState(tabId: number): Promise<void> {
@@ -157,11 +189,20 @@ export class ChromeAdapter implements BrowserAdapter {
 
     await this.iconManager.resetIcon(tabId);
 
-    const data = await chrome.storage.local.get(['tabStates']);
-    const tabStates = (data.tabStates as Record<string, TabState>) || {};
-    if (tabStates[tabId]) {
-      delete tabStates[tabId];
-      await chrome.storage.local.set({ tabStates });
+    try {
+      const data = await chrome.storage.local.get(['tabStates']);
+      const tabStates = slimTabStatesRecord(
+        (data.tabStates as Record<string, TabState>) || {}
+      );
+      if (tabStates[tabId]) {
+        delete tabStates[tabId];
+        await safeChromeStorageSet({ tabStates });
+      }
+    } catch (error) {
+      console.warn(
+        `[CHROME] Could not cleanup tab state for ${tabId}:`,
+        (error as Error)?.message ?? error
+      );
     }
   }
 
@@ -176,8 +217,6 @@ export class ChromeAdapter implements BrowserAdapter {
     console.log(
       `[CHROME] Request logged for tab ${tabId}, total requests: ${tabState.requestLog.length}`
     );
-
-    await this.persistTabState(tabId);
   }
 
   async updateRequestLog(
@@ -195,8 +234,6 @@ export class ChromeAdapter implements BrowserAdapter {
       console.log(
         `[CHROME] Response logged for request: ${requestId} in tab ${tabId}`
       );
-
-      await this.persistTabState(tabId);
       return requestEntry;
     } else {
       console.warn(
@@ -210,8 +247,6 @@ export class ChromeAdapter implements BrowserAdapter {
     const tabState = await this.getTabState(tabId);
     tabState.requestLog = [];
     console.log(`[CHROME] Cleared request log for tab ${tabId}`);
-
-    await this.persistTabState(tabId);
   }
 
   async notifyContentScript(
@@ -410,6 +445,7 @@ export class ChromeAdapter implements BrowserAdapter {
    */
   async syncDeclarativeRedirectRules(rulesMap: Map<string, ApiRule>): Promise<void> {
     if (typeof chrome === 'undefined' || !chrome.declarativeNetRequest) {
+      console.warn('[APILOT DNR] declarativeNetRequest API not available');
       return;
     }
 
@@ -426,11 +462,16 @@ export class ChromeAdapter implements BrowserAdapter {
 
     for (const rule of rulesMap.values()) {
       if (!rule || !rule.enabled || rule.action !== 'redirect') continue;
+      // DNR only handles static asset redirects (<script>, <link>, etc.).
+      // REST/GraphQL redirect rules are handled by the injected script, which
+      // already respects tab-enabled state. Registering them here would cause
+      // redirects to fire globally even when monitoring is off.
+      if (rule.requestType !== 'static') continue;
       const target = (rule.redirectUrl ?? '').trim();
       if (!target) continue;
 
-      const dnr = buildChromeDeclarativeRedirect(rule);
-      if (!dnr || !dnr.regexFilter || !dnr.redirect) {
+      const dnrRules = buildAllChromeDeclarativeRedirects(rule);
+      if (dnrRules.length === 0) {
         console.warn(
           '[APILOT DNR] Redirect needs Host/Domain (urlPattern) and valid redirectUrl:',
           rule.name || rule.id
@@ -438,30 +479,56 @@ export class ChromeAdapter implements BrowserAdapter {
         continue;
       }
 
-      const condition: chrome.declarativeNetRequest.RuleCondition = {
-        regexFilter: dnr.regexFilter,
-      };
+      for (const dnr of dnrRules) {
+        if (!dnr.regexFilter || !dnr.redirect) continue;
 
-      addRules.push({
-        id: nid++,
-        priority: 1,
-        action: {
-          type: chrome.declarativeNetRequest.RuleActionType.REDIRECT,
-          redirect: dnr.redirect as chrome.declarativeNetRequest.Redirect,
-        },
-        condition,
-      });
+        const condition: chrome.declarativeNetRequest.RuleCondition = {
+          regexFilter: dnr.regexFilter,
+          ...(dnr.requestDomains?.length
+            ? { requestDomains: dnr.requestDomains }
+            : {}),
+        };
 
-      if (nid > MAX_ID) {
-        console.warn('[APILOT DNR] Max redirect rule count reached');
-        break;
+        addRules.push({
+          id: nid++,
+          priority: dnr.requestDomains?.length ? 2 : 1,
+          action: {
+            type: chrome.declarativeNetRequest.RuleActionType.REDIRECT,
+            redirect: dnr.redirect as chrome.declarativeNetRequest.Redirect,
+          },
+          condition,
+        });
+
+        if (nid > MAX_ID) {
+          console.warn('[APILOT DNR] Max redirect rule count reached');
+          break;
+        }
       }
+
+      if (nid > MAX_ID) break;
     }
 
-    await chrome.declarativeNetRequest.updateDynamicRules({
-      removeRuleIds: removeIds,
-      addRules,
-    });
-    console.log('[APILOT DNR] Synced redirect rules:', addRules.length);
+    try {
+      await chrome.declarativeNetRequest.updateDynamicRules({
+        removeRuleIds: removeIds,
+        addRules,
+      });
+      console.log('[APILOT DNR] Synced redirect rules:', addRules.length);
+      for (const r of addRules) {
+        const cond = r.condition as chrome.declarativeNetRequest.RuleCondition;
+        console.log(
+          '[APILOT DNR] Rule',
+          r.id,
+          cond.requestDomains ? `domains=${cond.requestDomains.join(',')}` : 'regex',
+          cond.regexFilter
+        );
+      }
+    } catch (error) {
+      console.error(
+        '[APILOT DNR] updateDynamicRules failed:',
+        (error as Error)?.message ?? error
+      );
+      throw error;
+    }
   }
 }

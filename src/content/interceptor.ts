@@ -107,7 +107,7 @@ export class APIInterceptor {
             this.pendingNetworkCapture = { ...this.defaultNetworkCapture(), ...nc };
             window.postMessage(
               { type: 'APILOT_SET_NETWORK_CAPTURE', payload: this.pendingNetworkCapture },
-              window.location.origin || '*',
+              (window.location.origin && window.location.origin !== 'null' ? window.location.origin : '*'),
             );
           }
           sendResponse({ success: true });
@@ -143,6 +143,21 @@ export class APIInterceptor {
           e.data.payload.requestType = 'graphql';
           await this.handleAPIResponse(e.data.payload);
           break;
+
+        case 'APILOT_DIAG':
+          // Forward diagnostic log from injected/page script to background buffer
+          browser.runtime.sendMessage({
+            type: 'LOG_DIAG',
+            level: e.data.payload.level ?? 'log',
+            src: e.data.payload.src ?? 'injected',
+            msg: e.data.payload.msg ?? '',
+            ts: e.data.payload.ts,
+          }).catch(() => {});
+          break;
+
+        case 'PROXY_REDIRECT_REQUEST':
+          this.handleProxyRedirectRequest(e.data.payload);
+          break;
       }
     });
   }
@@ -174,9 +189,9 @@ export class APIInterceptor {
     await this.refreshNetworkCaptureSettings();
     this.isMonitoring = true;
     // Re-enable the injected script in case it was stopped by a previous stopMonitoring() call
-    window.postMessage({ type: 'START_API_MONITORING' }, window.location.origin || '*');
+    window.postMessage({ type: 'START_API_MONITORING' }, (window.location.origin && window.location.origin !== 'null' ? window.location.origin : '*'));
     // Push latest network capture settings
-    window.postMessage({ type: 'APILOT_SET_NETWORK_CAPTURE', payload: { ...this.pendingNetworkCapture } }, window.location.origin || '*');
+    window.postMessage({ type: 'APILOT_SET_NETWORK_CAPTURE', payload: { ...this.pendingNetworkCapture } }, (window.location.origin && window.location.origin !== 'null' ? window.location.origin : '*'));
     console.log('[CONTENT] API monitoring started');
   }
 
@@ -184,7 +199,7 @@ export class APIInterceptor {
     this.isMonitoring = false;
     // Always sync the page context — it can be out of sync if STOP was skipped earlier
     // or the injected script used its default state before any START.
-    window.postMessage({ type: 'STOP_API_MONITORING' }, window.location.origin || '*');
+    window.postMessage({ type: 'STOP_API_MONITORING' }, (window.location.origin && window.location.origin !== 'null' ? window.location.origin : '*'));
     console.log('[CONTENT] API monitoring stopped');
   }
 
@@ -195,12 +210,12 @@ export class APIInterceptor {
     const payload = { ...this.pendingNetworkCapture };
     script.onload = () => {
       script.remove();
-      window.postMessage({ type: 'APILOT_SET_NETWORK_CAPTURE', payload }, window.location.origin || '*');
+      window.postMessage({ type: 'APILOT_SET_NETWORK_CAPTURE', payload }, (window.location.origin && window.location.origin !== 'null' ? window.location.origin : '*'));
       // If checkInitialDevToolsState() resolved BEFORE this script finished loading,
       // the START_API_MONITORING it sent was silently dropped (no listener yet).
       // Re-send it now that the injected script's message listener is live.
       if (this.isMonitoring) {
-        window.postMessage({ type: 'START_API_MONITORING' }, window.location.origin || '*');
+        window.postMessage({ type: 'START_API_MONITORING' }, (window.location.origin && window.location.origin !== 'null' ? window.location.origin : '*'));
       }
     };
     script.onerror = () => console.error('Failed to inject API interceptor script');
@@ -209,36 +224,14 @@ export class APIInterceptor {
 
   private async handleAPIRequest(payload: Record<string, unknown>): Promise<void> {
     const requestType = (payload.requestType as string) || 'graphql';
-    console.log(`[CONTENT] Handling ${requestType.toUpperCase()} request:`, {
-      requestId: payload.requestId,
-      operationName: payload.operationName,
-      method: payload.method,
-      url: payload.url,
-    });
 
     try {
-      // First check if extension is enabled
-      const enabledResponse = (await browser.runtime.sendMessage({
-        type: 'GET_ENABLED_STATUS',
-      })) as MessageResponses['GET_ENABLED_STATUS'];
-
-      console.log('[CONTENT] Extension enabled status:', enabledResponse);
-
-      // If disabled, don't log or process the request
-      if (!enabledResponse.enabled) {
-        console.log('[CONTENT] Extension disabled - skipping request processing');
-        window.postMessage(
-          { type: 'API_REQUEST_PROCEED', payload: { requestId: payload.requestId } },
-          window.location.origin || '*',
-        );
-        return;
-      }
-
-      // Tab-level enable: resolve before logging so we never log or apply rules when the tab is off.
+      // Single round-trip: GET_MATCHING_RULE returns both enabled status and matching rules.
+      // Eliminates the separate GET_ENABLED_STATUS call that was adding a full extra RTT.
       const ruleResponse = (await browser.runtime.sendMessage({
         type: 'GET_MATCHING_RULE',
         data: {
-          requestType: requestType,
+          requestType,
           graphqlData:
             requestType === 'graphql'
               ? {
@@ -262,14 +255,38 @@ export class APIInterceptor {
       })) as MessageResponses['GET_MATCHING_RULE'];
 
       if (!ruleResponse.success || ruleResponse.enabled !== true) {
-        console.log('[CONTENT] Tab monitoring disabled or rule check failed — proceeding without rules');
         window.postMessage(
           { type: 'API_REQUEST_PROCEED', payload: { requestId: payload.requestId } },
-          window.location.origin || '*',
+          (window.location.origin && window.location.origin !== 'null' ? window.location.origin : '*'),
         );
         return;
       }
 
+      // Determine rules before proceeding so the proceed/apply message goes out immediately.
+      const rulesToApply =
+        ruleResponse.rules && ruleResponse.rules.length > 0
+          ? ruleResponse.rules
+          : ruleResponse.rule
+            ? [ruleResponse.rule]
+            : [];
+
+      // Send proceed/apply to the injected script RIGHT AWAY — do not wait for LOG_REQUEST.
+      if (rulesToApply.length > 0) {
+        window.postMessage(
+          {
+            type: 'APPLY_API_RULES',
+            payload: { requestId: payload.requestId, rules: rulesToApply },
+          },
+          (window.location.origin && window.location.origin !== 'null' ? window.location.origin : '*'),
+        );
+      } else {
+        window.postMessage(
+          { type: 'API_REQUEST_PROCEED', payload: { requestId: payload.requestId } },
+          (window.location.origin && window.location.origin !== 'null' ? window.location.origin : '*'),
+        );
+      }
+
+      // Log the request to background after unblocking the fetch — fire-and-forget.
       const requestData: RequestData = {
         requestId: payload.requestId as string | undefined,
         requestType: requestType as 'graphql' | 'rest',
@@ -285,107 +302,53 @@ export class APIInterceptor {
         requestHeaders: payload.requestHeaders as Record<string, string> | undefined,
         timestamp: payload.timestamp as string | undefined,
       };
-
-      console.log(`[CONTENT] Logging ${requestType} request to background:`, {
-        requestId: payload.requestId,
-        hasHeaders: !!payload.requestHeaders,
-        headerCount: payload.requestHeaders
-          ? Object.keys(payload.requestHeaders as object).length
-          : 0,
-      });
-
-      const logResponse = (await browser.runtime.sendMessage({
-        type: 'LOG_REQUEST',
-        data: requestData,
-      })) as MessageResponses['LOG_REQUEST'];
-      console.log('[CONTENT] Request logged:', logResponse);
-
-      console.log('[CONTENT] Rule check response:', ruleResponse);
-      console.log(
-        `[CONTENT] Rules found: ${ruleResponse.rules ? ruleResponse.rules.length : 0}, Single rule: ${ruleResponse.rule ? 'yes' : 'no'}`,
-      );
-
-      // Always check for rules array first, then fall back to single rule for compatibility
-      const rulesToApply =
-        ruleResponse.rules && ruleResponse.rules.length > 0
-          ? ruleResponse.rules
-          : ruleResponse.rule
-            ? [ruleResponse.rule]
-            : [];
-
-      if (rulesToApply.length > 0) {
-        console.log(
-          `[CONTENT] Found ${rulesToApply.length} matching rule(s) for ${(payload.operationName as string) || (payload.endpoint as string)}:`,
-          rulesToApply.map((r) => `${r.name} (${r.action})`).join(', '),
-        );
-
-        window.postMessage(
-          {
-            type: 'APPLY_API_RULES',
-            payload: { requestId: payload.requestId, rules: rulesToApply },
-          },
-          window.location.origin || '*',
-        );
-      } else {
-        console.log('[CONTENT] No rules apply, proceeding normally');
-        window.postMessage(
-          { type: 'API_REQUEST_PROCEED', payload: { requestId: payload.requestId } },
-          window.location.origin || '*',
-        );
-      }
+      browser.runtime.sendMessage({ type: 'LOG_REQUEST', data: requestData }).catch(() => {});
     } catch (error: unknown) {
       console.error('Error handling API request:', error);
-      // Let request proceed on error
       window.postMessage(
         { type: 'API_REQUEST_PROCEED', payload: { requestId: payload.requestId } },
-        window.location.origin || '*',
+        (window.location.origin && window.location.origin !== 'null' ? window.location.origin : '*'),
       );
     }
   }
 
+  private handleProxyRedirectRequest(payload: Record<string, unknown>): void {
+    const requestId = payload.requestId as string;
+    browser.runtime.sendMessage({
+      type: 'PROXY_FETCH',
+      url: payload.url,
+      method: payload.method,
+      headers: payload.headers,
+      body: payload.body,
+    }).then((res: unknown) => {
+      window.postMessage(
+        { type: 'PROXY_REDIRECT_RESPONSE', payload: { requestId, ...(res as Record<string, unknown>) } },
+        (window.location.origin && window.location.origin !== 'null' ? window.location.origin : '*'),
+      );
+    }).catch((err: unknown) => {
+      window.postMessage(
+        { type: 'PROXY_REDIRECT_RESPONSE', payload: { requestId, success: false, error: String(err) } },
+        (window.location.origin && window.location.origin !== 'null' ? window.location.origin : '*'),
+      );
+    });
+  }
+
   private async handleAPIResponse(payload: Record<string, unknown>): Promise<void> {
     const requestType = (payload.requestType as string) || 'graphql';
-    console.log(`[CONTENT] Received ${requestType} response from injected script:`, {
-      requestId: payload.requestId,
-      status: payload.status,
-      hasResponse: !!payload.response,
-      error: payload.error,
-    });
 
-    try {
-      const enabledResp = (await browser.runtime.sendMessage({
-        type: 'GET_ENABLED_STATUS',
-      })) as MessageResponses['GET_ENABLED_STATUS'] | undefined;
+    const responseData: ResponseData = {
+      requestId: payload.requestId as string,
+      requestType: requestType as 'graphql' | 'rest',
+      response: payload.response,
+      status: payload.status as number | undefined,
+      statusText: payload.statusText as string | undefined,
+      headers: payload.headers as Record<string, string> | undefined,
+      error: payload.error as string | undefined,
+      timestamp: payload.timestamp as string | undefined,
+      transferSize: payload.transferSize as number | undefined,
+    };
 
-      if (!enabledResp?.enabled) {
-        return;
-      }
-
-      const responseData: ResponseData = {
-        requestId: payload.requestId as string,
-        requestType: requestType as 'graphql' | 'rest',
-        response: payload.response,
-        status: payload.status as number | undefined,
-        statusText: payload.statusText as string | undefined,
-        headers: payload.headers as Record<string, string> | undefined,
-        error: payload.error as string | undefined,
-        timestamp: payload.timestamp as string | undefined,
-        transferSize: payload.transferSize as number | undefined,
-      };
-
-      // Log the response
-      console.log('[CONTENT] Logging response to background:', payload.requestId);
-      const logResponse = (await browser.runtime.sendMessage({
-        type: 'LOG_RESPONSE',
-        data: responseData,
-      })) as MessageResponses['LOG_RESPONSE'];
-
-      console.log('[CONTENT] Response logged to background:', {
-        requestId: payload.requestId,
-        success: logResponse?.success,
-      });
-    } catch (error: unknown) {
-      console.error('[CONTENT] Error handling API response:', error);
-    }
+    // Fire-and-forget — response logging is never on the critical path.
+    browser.runtime.sendMessage({ type: 'LOG_RESPONSE', data: responseData }).catch(() => {});
   }
 }

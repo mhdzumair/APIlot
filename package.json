@@ -54,7 +54,8 @@
     "lint:fix": "eslint src entrypoints --fix",
     "typecheck": "tsc --noEmit",
     "postinstall": "wxt prepare",
-    "playwright:extension": "node scripts/playwright-with-apilot.mjs"
+    "playwright:extension": "node scripts/playwright-with-apilot.mjs",
+    "playwright:extension:fresh": "node scripts/playwright-with-apilot.mjs --fresh"
   },
   "dependencies": {
     "chart.js": "^4.5.1",

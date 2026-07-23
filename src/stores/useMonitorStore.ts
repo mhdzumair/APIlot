@@ -3,7 +3,7 @@ import type { LogEntry } from '../types/requests';
 
 interface Filters {
   search: string;
-  /** 'all' includes graphql + rest but NOT static by default. 'static' shows only static. */
+  /** 'all' includes graphql + rest + static. 'static' shows only static. */
   type: 'all' | 'graphql' | 'rest' | 'static';
   status: 'all' | 'success' | 'error' | 'pending';
   method: string; // 'ALL' or specific HTTP method
@@ -47,11 +47,8 @@ function applyFilters(log: LogEntry[], filters: Filters): LogEntry[] {
   if (filters.type === 'static') {
     result = result.filter((entry) => entry.requestType === 'static');
   } else if (filters.type !== 'all') {
-    // 'graphql' or 'rest' — also exclude static
+    // 'graphql' or 'rest'
     result = result.filter((entry) => entry.requestType === filters.type);
-  } else {
-    // 'all' — show graphql + rest but hide static by default
-    result = result.filter((entry) => entry.requestType !== 'static');
   }
 
   if (filters.method && filters.method !== 'ALL') {
@@ -98,7 +95,7 @@ function applyFilters(log: LogEntry[], filters: Filters): LogEntry[] {
   return result;
 }
 
-export const useMonitorStore = create<MonitorState>((set, get) => ({
+export const useMonitorStore = create<MonitorState>((set) => ({
   requestLog: [],
   filteredLog: [],
   filters: DEFAULT_FILTERS,

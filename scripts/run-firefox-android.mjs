@@ -36,17 +36,46 @@ const get = (flag) => {
   const idx = args.indexOf(flag);
   return idx !== -1 ? args[idx + 1] : undefined;
 };
-const adbDevice = get('--adb-device');
-const firefoxApk = get('--firefox-apk') ?? 'org.mozilla.fenix';
+let adbDevice = get('--adb-device');
+const firefoxApk = get('--firefox-apk'); // undefined = let web-ext-run auto-discover
 const skipBuild = args.includes('--no-build');
+
+// Auto-select the device when exactly one is connected — web-ext-run always
+// requires an explicit serial even when there is no ambiguity.
+if (!adbDevice) {
+  try {
+    const adbOut = execSync('adb devices', { encoding: 'utf8' });
+    const devices = adbOut
+      .split('\n')
+      .slice(1) // skip the "List of devices attached" header
+      .map((l) => l.trim())
+      .filter((l) => l && !l.startsWith('*') && l.includes('\t'))
+      .map((l) => l.split('\t')[0].trim());
+
+    if (devices.length === 1) {
+      adbDevice = devices[0];
+      console.log(`Auto-selected device: ${adbDevice}`);
+    } else if (devices.length > 1) {
+      console.error('Multiple devices connected. Specify one with --adb-device <serial>:');
+      devices.forEach((d) => console.error(`  ${d}`));
+      process.exit(1);
+    } else {
+      console.error('No Android devices found. Connect a device with USB debugging enabled.');
+      process.exit(1);
+    }
+  } catch {
+    console.error('Could not run `adb devices`. Make sure ADB is installed and on PATH.');
+    process.exit(1);
+  }
+}
 
 if (!skipBuild) {
   console.log('Building Firefox extension…');
   execSync('npm run build:firefox', { cwd: rootDir, stdio: 'inherit' });
 }
 
-console.log(`Launching on device: ${adbDevice ?? '(auto-detect)'}`);
-console.log(`Firefox APK: ${firefoxApk}`);
+console.log(`Launching on device: ${adbDevice}`);
+console.log(`Firefox APK: ${firefoxApk ?? '(auto-discover)'}`);
 console.log(`Source: ${sourceDir}\n`);
 
 await webext.cmd.run(
@@ -54,8 +83,9 @@ await webext.cmd.run(
     sourceDir,
     artifactsDir: path.join(rootDir, 'dist', 'web-ext-artifacts'),
     target: ['firefox-android'],
-    firefoxApk,
     adbDevice,
+    adbRemoveOldArtifacts: true,
+    ...(firefoxApk ? { firefoxApk } : {}),
     noInput: false,
     noReload: false,
     verbose: false,

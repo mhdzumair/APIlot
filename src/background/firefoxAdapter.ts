@@ -58,6 +58,16 @@ export class FirefoxAdapter implements BrowserAdapter {
     return null;
   }
 
+  getFirstEnabledTabId(): number | null {
+    for (const [id, state] of this.tabStates) {
+      if (state.enabled) {
+        const n = typeof id === 'number' ? id : Number(id);
+        return Number.isNaN(n) ? null : n;
+      }
+    }
+    return null;
+  }
+
   async getTabState(tabId: number): Promise<TabState> {
     const canonical: number | string =
       typeof tabId === 'number' && !Number.isNaN(tabId)

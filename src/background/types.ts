@@ -24,6 +24,8 @@ export interface BrowserAdapter {
   initializeTabStates(tabStatesData?: Record<string, TabState>): Promise<void>;
   getTabStatesForStorage(): Promise<Record<string, TabState>>;
   peekTabState(tabId: number | string): TabState | null;
+  /** First tab id with monitoring enabled (for webRequest tabId -1 fallback). */
+  getFirstEnabledTabId(): number | null;
   getTabState(tabId: number): Promise<TabState>;
   setTabDevToolsState(tabId: number, isOpen: boolean): Promise<void>;
   persistTabState(tabId: number): Promise<void>;

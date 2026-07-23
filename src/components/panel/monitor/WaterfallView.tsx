@@ -23,6 +23,25 @@ interface TooltipInfo {
   entry: LogEntry;
   x: number;
   y: number;
+  startOffsetMs: number;
+}
+
+const TOOLTIP_MAX_WIDTH = 280;
+const TOOLTIP_ESTIMATED_HEIGHT = 124;
+const TOOLTIP_GAP = 12;
+const TOOLTIP_VIEWPORT_PADDING = 8;
+
+function formatDuration(ms: number): string {
+  return ms < 1000 ? `${Math.round(ms)}ms` : `${(ms / 1000).toFixed(1)}s`;
+}
+
+function formatClockTime(timestamp: number): string {
+  const date = new Date(timestamp);
+  const hours = String(date.getHours()).padStart(2, '0');
+  const minutes = String(date.getMinutes()).padStart(2, '0');
+  const seconds = String(date.getSeconds()).padStart(2, '0');
+  const millis = String(date.getMilliseconds()).padStart(3, '0');
+  return `${hours}:${minutes}:${seconds}.${millis}`;
 }
 
 function Tooltip({ info }: { info: TooltipInfo }) {
@@ -31,14 +50,38 @@ function Tooltip({ info }: { info: TooltipInfo }) {
   const method = getRequestMethod(entry);
   const ms = entry.responseTime;
   const isPending = ms === undefined && !entry.responseError;
+  const viewportWidth = typeof window === 'undefined' ? 1024 : window.innerWidth;
+  const viewportHeight = typeof window === 'undefined' ? 768 : window.innerHeight;
+  const maxLeft = Math.max(
+    viewportWidth - TOOLTIP_MAX_WIDTH - TOOLTIP_VIEWPORT_PADDING,
+    TOOLTIP_VIEWPORT_PADDING,
+  );
+  const left = Math.min(
+    Math.max(info.x + TOOLTIP_GAP, TOOLTIP_VIEWPORT_PADDING),
+    maxLeft,
+  );
+  const preferredTop = info.y + TOOLTIP_GAP;
+  const top =
+    preferredTop + TOOLTIP_ESTIMATED_HEIGHT > viewportHeight
+      ? Math.max(info.y - TOOLTIP_ESTIMATED_HEIGHT - TOOLTIP_GAP, TOOLTIP_VIEWPORT_PADDING)
+      : preferredTop;
 
   return (
     <div
       className="fixed z-50 pointer-events-none bg-popover border border-border/60 rounded-md shadow-lg px-2.5 py-2 text-[11px] max-w-[280px]"
-      style={{ left: info.x + 12, top: info.y + 12 }}
+      style={{
+        left,
+        top,
+        width: `min(${TOOLTIP_MAX_WIDTH}px, calc(100vw - ${TOOLTIP_VIEWPORT_PADDING * 2}px))`,
+      }}
     >
       <div className="font-medium text-foreground truncate">{name}</div>
       <div className="text-muted-foreground font-mono mt-0.5 truncate text-[10px]">{entry.url}</div>
+      <div className="flex items-center gap-2 mt-1.5 text-[10px] font-mono">
+        <span className="text-muted-foreground">start</span>
+        <span>+{formatDuration(info.startOffsetMs)}</span>
+        <span className="text-muted-foreground/70">{formatClockTime(entry.startTime)}</span>
+      </div>
       <div className="flex items-center gap-3 mt-1.5 text-[10px] font-mono">
         <span className="text-muted-foreground">{method}</span>
         {entry.responseStatus !== undefined && (
@@ -49,7 +92,7 @@ function Tooltip({ info }: { info: TooltipInfo }) {
         {isPending ? (
           <span className="text-amber-400">pending…</span>
         ) : ms !== undefined ? (
-          <span>{ms < 1000 ? `${ms}ms` : `${(ms / 1000).toFixed(1)}s`}</span>
+          <span>{formatDuration(ms)}</span>
         ) : null}
         {entry.transferSize !== undefined && (
           <span className="text-muted-foreground/70">
@@ -159,7 +202,10 @@ export function WaterfallView({ requests }: WaterfallViewProps) {
       {requests.map((entry) => {
         const offsetMs = entry.startTime - minStart;
         const durationMs = entry.responseTime ?? (entry.endTime ? entry.endTime - entry.startTime : 0);
-        const isPending = !entry.responseTime && !entry.responseError;
+        const isPending =
+          entry.responseTime === undefined &&
+          entry.endTime === undefined &&
+          !entry.responseError;
 
         const leftPct = (offsetMs / totalSpan) * 100;
         const widthPct = Math.max((durationMs / totalSpan) * 100, 0.5); // min 0.5% to stay visible
@@ -203,20 +249,30 @@ export function WaterfallView({ requests }: WaterfallViewProps) {
                 )}
                 role="button"
                 tabIndex={0}
-                aria-label={`${getOperationDisplayName(entry)} — ${durationMs > 0 ? (durationMs < 1000 ? `${durationMs}ms` : `${(durationMs / 1000).toFixed(1)}s`) : 'pending'}`}
+                aria-label={`${getOperationDisplayName(entry)} — starts at +${formatDuration(offsetMs)} — ${
+                  durationMs > 0 ? formatDuration(durationMs) : 'pending'
+                }`}
                 style={{
                   left: `${leftPct}%`,
                   width: `${widthPct}%`,
                   minWidth: '3px',
                 }}
                 onMouseEnter={(e) =>
-                  setTooltip({ entry, x: e.clientX, y: e.clientY })
+                  setTooltip({ entry, x: e.clientX, y: e.clientY, startOffsetMs: offsetMs })
                 }
                 onMouseMove={(e) =>
                   setTooltip((t) => t ? { ...t, x: e.clientX, y: e.clientY } : null)
                 }
                 onMouseLeave={() => setTooltip(null)}
-                onFocus={(e) => setTooltip({ entry, x: e.currentTarget.getBoundingClientRect().left, y: e.currentTarget.getBoundingClientRect().bottom })}
+                onFocus={(e) => {
+                  const rect = e.currentTarget.getBoundingClientRect();
+                  setTooltip({
+                    entry,
+                    x: rect.left,
+                    y: rect.bottom,
+                    startOffsetMs: offsetMs,
+                  });
+                }}
                 onBlur={() => setTooltip(null)}
                 onKeyDown={() => { /* bar is info-only */ }}
               />
@@ -226,7 +282,7 @@ export function WaterfallView({ requests }: WaterfallViewProps) {
                   className="absolute top-1 h-4 flex items-center px-1 text-[9px] font-mono text-white/80 pointer-events-none"
                   style={{ left: `${leftPct}%`, width: `${widthPct}%` }}
                 >
-                  {durationMs < 1000 ? `${durationMs}ms` : `${(durationMs / 1000).toFixed(1)}s`}
+                  {formatDuration(durationMs)}
                 </span>
               )}
             </div>

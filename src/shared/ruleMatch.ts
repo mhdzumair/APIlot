@@ -176,8 +176,69 @@ function escapeRegex(s: string): string {
 }
 
 /**
+ * Extract a bare hostname from a host / URL pattern (no wildcards).
+ */
+export function extractHostFromPattern(hostPat: string): string | null {
+  const p = String(hostPat ?? '').trim();
+  if (!p || p.includes('*')) return null;
+  if (p.includes('://')) {
+    try {
+      return new URL(p).hostname;
+    } catch {
+      return null;
+    }
+  }
+  if (!p.includes('/')) {
+    return p;
+  }
+  try {
+    return new URL('https://' + p.replace(/^\/+/, '')).hostname;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * When a host glob contains `*`, also emit the host where `*` matches empty
+ * (e.g. modernxl*.pearson.com → modernxl.pearson.com for prod).
+ */
+export function expandHostPatternToExplicitHosts(hostPat: string): string[] {
+  const p = String(hostPat ?? '').trim();
+  if (!p || !p.includes('*')) return [];
+
+  const parts = p.split(/\*+/);
+  if (parts.length !== 2) return [];
+
+  const collapsed = parts[0] + parts[1];
+  if (!collapsed || collapsed.includes('*')) return [];
+
+  try {
+    const host = extractHostFromPattern(collapsed) ?? collapsed;
+    return host ? [host] : [];
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Returns true when a hostname matches a host / domain glob pattern.
+ */
+export function hostMatchesPattern(hostname: string, hostPat: string): boolean {
+  const host = String(hostname ?? '').trim().toLowerCase();
+  const pattern = String(hostPat ?? '').trim();
+  if (!host || !pattern) return false;
+
+  const hostRe = hostPatternToRegexHostPart(pattern);
+  if (!hostRe) return false;
+  return new RegExp('^' + hostRe + '$', 'i').test(host);
+}
+
+/**
  * Host + optional port for redirect regex / DNR.
  * Handles full URL, host/path, plain host, and *.wild patterns.
+ *
+ * Uses `[-\\w.]*` (not `.*`) for single-star host globs so Chrome DNR / RE2
+ * does not greedily consume the domain suffix (e.g. modernxl*.pearson.com).
  */
 export function hostPatternToRegexHostPart(hostPat: string): string | null {
   const p = String(hostPat ?? '').trim();
@@ -193,18 +254,20 @@ export function hostPatternToRegexHostPart(hostPat: string): string | null {
     return escapeRegex(p);
   }
   if (p.includes('*') && !p.includes('/')) {
-    return p
-      .split(/\*+/g)
-      .map(escapeRegex)
-      .join('.*');
+    const parts = p.split(/\*+/g);
+    if (parts.length === 2) {
+      return escapeRegex(parts[0]) + '[-\\w.]*' + escapeRegex(parts[1]);
+    }
+    return parts.map(escapeRegex).join('[-\\w.]*');
   }
   try {
     return escapeRegex(new URL('https://' + p.replace(/^\/+/, '')).host);
   } catch {
-    return p
-      .split(/\*+/g)
-      .map(escapeRegex)
-      .join('.*');
+    const parts = p.split(/\*+/g);
+    if (parts.length === 2) {
+      return parts.map(escapeRegex).join('[-\\w.]*');
+    }
+    return parts.map(escapeRegex).join('.*');
   }
 }
 
@@ -304,6 +367,37 @@ function endpointPatternToRegex(endpointPattern: string): string {
 export interface RedirectAction {
   regexFilter: string;
   redirect: { url: string } | { regexSubstitution: string };
+}
+
+/** Chrome DNR rule condition — optional requestDomains narrows wildcard host rules. */
+export interface DnrRedirectCondition extends RedirectAction {
+  requestDomains?: string[];
+}
+
+/**
+ * Build one or more Chrome DNR redirect conditions for a static rule.
+ * Wildcard host patterns also emit an explicit host rule (e.g. prod modernxl.pearson.com).
+ */
+export function buildAllChromeDeclarativeRedirects(rule: ApiRule): DnrRedirectCondition[] {
+  const out: DnrRedirectCondition[] = [];
+  const seen = new Set<string>();
+
+  const push = (dnr: RedirectAction | null, requestDomains?: string[]) => {
+    if (!dnr?.regexFilter || !dnr.redirect) return;
+    const key = (requestDomains?.join(',') ?? '') + '|' + dnr.regexFilter;
+    if (seen.has(key)) return;
+    seen.add(key);
+    out.push({ ...dnr, requestDomains });
+  };
+
+  push(buildChromeDeclarativeRedirect(rule));
+
+  const urlPat = (rule.urlPattern ?? '').trim();
+  for (const host of expandHostPatternToExplicitHosts(urlPat)) {
+    push(buildChromeDeclarativeRedirect({ ...rule, urlPattern: host }), [host]);
+  }
+
+  return out;
 }
 
 /**
@@ -476,6 +570,57 @@ export function buildRedirectDestination(rule: ApiRule, sourceUrl: string): stri
   } catch {
     return base;
   }
+}
+
+// ---------------------------------------------------------------------------
+// Static asset matching (monitoring + Firefox blocking)
+// ---------------------------------------------------------------------------
+
+/**
+ * Returns true when a static redirect/block rule matches a script/CSS URL.
+ */
+export function matchesStaticAssetRule(rule: ApiRule, url: string): boolean {
+  if (!rule.enabled || rule.requestType !== 'static') return false;
+
+  const hostPat = (rule.urlPattern ?? '').trim();
+  if (!hostPat) return false;
+
+  let hostname: string;
+  let pathname: string;
+  try {
+    const parsed = new URL(url);
+    hostname = parsed.hostname;
+    pathname = parsed.pathname;
+  } catch {
+    return false;
+  }
+
+  if (!hostMatchesPattern(hostname, hostPat)) return false;
+
+  const pathPat = (rule.restPath ?? '').trim();
+  if (pathPat && !pathPatternMatches(pathPat, pathname)) return false;
+
+  const endpoint = (rule.restEndpoint ?? '').trim();
+  if (endpoint) {
+    const segments = pathname.split('/').filter(Boolean);
+    const filename = segments[segments.length - 1]?.split('?')[0] ?? '';
+    if (!patternMatches(endpoint, filename)) return false;
+  }
+
+  return true;
+}
+
+export function getMatchingStaticRules(
+  rules: Map<string, ApiRule>,
+  url: string
+): ApiRule[] {
+  const matched: ApiRule[] = [];
+  for (const rule of rules.values()) {
+    if (matchesStaticAssetRule(rule, url)) {
+      matched.push(rule);
+    }
+  }
+  return matched;
 }
 
 // ---------------------------------------------------------------------------

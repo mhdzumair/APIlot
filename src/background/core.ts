@@ -6,7 +6,9 @@ import {
   buildRedirectDestination,
   extractFirefoxBlockingUrlPatterns,
   getMatchingRules,
+  getMatchingStaticRules,
   matchesRule,
+  matchesStaticAssetRule,
 } from '../shared/ruleMatch';
 import type { RequestMatchData } from '../shared/ruleMatch';
 import type { BrowserAdapter } from './types';
@@ -52,10 +54,20 @@ interface WebRequestBufferEntry {
   completed?: boolean;
 }
 
+export interface DiagEntry {
+  ts: string;
+  level: 'log' | 'warn' | 'error';
+  src: string;
+  msg: string;
+}
+
 export class APITestingCore {
   private adapter: BrowserAdapter;
   private maxLogSize: number;
   private readyPromise: Promise<void>;
+
+  private diagBuffer: DiagEntry[] = [];
+  private readonly MAX_DIAG = 500;
 
   // Initialized in initializeCore
   private rules!: Map<string, ApiRule>;
@@ -67,7 +79,7 @@ export class APITestingCore {
   private webRequestBuffer!: Map<number, WebRequestBufferEntry[]>;
   /** Firefox MV2: blocking redirect listener (script src, etc.) */
   private firefoxBlockingRedirectHandler:
-    | ((details: { url: string; method?: string }) =>
+    | ((details: { url: string; method?: string; tabId?: number }) =>
         | Record<string, never>
         | { redirectUrl: string })
     | null = null;
@@ -151,8 +163,15 @@ export class APITestingCore {
     // Setup browser-level network capture for early requests
     this.setupWebRequestCapture();
 
+    // Sync redirect rules on startup so stale DNR rules from previous builds
+    // are cleaned up (e.g. after the rule-type filter was added for Chrome DNR).
+    await this.syncRedirectRules();
+
+    const staticRedirects = [...this.rules.values()].filter(
+      (r) => r.enabled && r.requestType === 'static' && r.action === 'redirect'
+    ).length;
     console.log(
-      `[CORE] APIlot initialized - Rules: ${this.rules.size}, Profile: ${this.settings.logProfile}`
+      `[CORE] APIlot initialized - Rules: ${this.rules.size}, static redirects: ${staticRedirects}, Profile: ${this.settings.logProfile}`
     );
   }
 
@@ -318,7 +337,14 @@ export class APITestingCore {
 
     wr.onBeforeRequest.addListener(
       (details) => {
-        const tabState = this.adapter.peekTabState(details.tabId as number);
+        let tabId = details.tabId as number;
+        if (tabId < 0) {
+          const fallback = this.adapter.getFirstEnabledTabId();
+          if (fallback == null) return;
+          tabId = fallback;
+        }
+
+        const tabState = this.adapter.peekTabState(tabId);
         if (!tabState || !tabState.enabled) {
           return;
         }
@@ -339,7 +365,7 @@ export class APITestingCore {
             ? this.tryParseGraphqlOperationFromRequestBody(details)
             : undefined;
 
-        const webRequestId = `webreq_${details.requestId}_${details.tabId}`;
+        const webRequestId = `webreq_${details.requestId}_${tabId}`;
 
         const requestData: WebRequestBufferEntry = {
           webRequestId,
@@ -348,7 +374,7 @@ export class APITestingCore {
           method,
           timestamp: new Date().toISOString(),
           startTime: Date.now(),
-          tabId: details.tabId as number,
+          tabId,
           type: details.type as string,
           frameId: details.frameId as number,
           parentFrameId: details.parentFrameId as number,
@@ -357,7 +383,6 @@ export class APITestingCore {
           graphqlOperationName,
         };
 
-        const tabId = details.tabId as number;
         if (!this.webRequestBuffer.has(tabId)) {
           this.webRequestBuffer.set(tabId, []);
         }
@@ -371,7 +396,7 @@ export class APITestingCore {
         console.log('[CORE] WebRequest captured:', {
           url: details.url,
           method: details.method,
-          tabId: details.tabId,
+          tabId,
         });
       },
       { urls: ['<all_urls>'] },
@@ -475,7 +500,13 @@ export class APITestingCore {
   private handleBlockingRedirect(details: {
     url: string;
     method?: string;
+    tabId?: number;
   }): Record<string, never> | { redirectUrl: string } {
+    // Only apply redirects when monitoring is enabled for the tab
+    if (typeof details.tabId === 'number' && details.tabId >= 0) {
+      const tabState = this.adapter.peekTabState(details.tabId);
+      if (!tabState?.enabled) return {};
+    }
     const url = details.url;
     const method = details.method || 'GET';
 
@@ -485,8 +516,9 @@ export class APITestingCore {
 
       const rt = rule.requestType ?? 'graphql';
       let matched = false;
-      // static rules use REST matching semantics (URL + path/endpoint patterns)
-      if (rt === 'rest' || rt === 'both' || rt === 'static') {
+      if (rt === 'static') {
+        matched = matchesStaticAssetRule(rule, url);
+      } else if (rt === 'rest' || rt === 'both') {
         if (matchesRule({ ...rule, requestType: 'rest' }, { requestType: 'rest', url, method })) {
           matched = true;
         }
@@ -676,15 +708,23 @@ export class APITestingCore {
     // Populate matched rules for webRequest-based captures
     const tabState = this.adapter.peekTabState(request.tabId);
     if (tabState?.enabled) {
-      const matchData: RequestMatchData = {
-        requestType: requestType === 'static' ? 'rest' : requestType,
-        url: request.url,
-        method: request.method,
-      };
-      const matched = this.findMatchingRules(matchData, request.url);
-      if (matched.length > 0) {
-        logEntry.matchedRules = matched.map((r) => r.name || r.id);
-        logEntry.appliedRuleAction = matched[0].action;
+      if (requestType === 'static') {
+        const matched = getMatchingStaticRules(this.rules, request.url);
+        if (matched.length > 0) {
+          logEntry.matchedRules = matched.map((r) => r.name || r.id);
+          logEntry.appliedRuleAction = matched[0].action;
+        }
+      } else {
+        const matchData: RequestMatchData = {
+          requestType,
+          url: request.url,
+          method: request.method,
+        };
+        const matched = getMatchingRules(this.rules, matchData);
+        if (matched.length > 0) {
+          logEntry.matchedRules = matched.map((r) => r.name || r.id);
+          logEntry.appliedRuleAction = matched[0].action;
+        }
       }
     }
 
@@ -770,16 +810,28 @@ export class APITestingCore {
     const rulesObj = Object.fromEntries(this.rules);
     const tabStatesObj = await this.adapter.getTabStatesForStorage();
 
-    await this.adapter.saveToStorage({
-      apiRules: rulesObj,
-      tabStates: tabStatesObj,
-      settings: this.settings,
-      aiSettings: this.aiSettings,
-      performanceData: this.performanceData,
-      sessions: this.sessions as unknown as undefined,
-    });
+    if (this.performanceData?.requests?.length > 500) {
+      this.performanceData.requests = this.performanceData.requests.slice(-500);
+    }
+    if (this.sessions.length > 20) {
+      this.sessions = this.sessions.slice(-20);
+    }
 
-    await this.syncRedirectRules();
+    try {
+      await this.adapter.saveToStorage({
+        apiRules: rulesObj,
+        tabStates: tabStatesObj,
+        settings: this.settings,
+        aiSettings: this.aiSettings,
+        performanceData: this.performanceData,
+        sessions: this.sessions as unknown as undefined,
+      });
+    } catch (error) {
+      console.warn(
+        '[CORE] saveRules failed (rules kept in memory):',
+        (error as Error)?.message ?? error
+      );
+    }
   }
 
   private addRule(rule: Partial<ApiRule>): string {
@@ -813,12 +865,14 @@ export class APITestingCore {
 
   /** Sync redirect rules to both Chrome DNR and Firefox blocking webRequest. */
   private async syncRedirectRules(): Promise<void> {
-    if (typeof this.adapter.syncDeclarativeRedirectRules === 'function') {
-      try {
-        await this.adapter.syncDeclarativeRedirectRules(this.rules);
-      } catch (e) {
-        console.warn('[CORE] DNR redirect sync failed:', (e as Error)?.message ?? e);
-      }
+    if (typeof this.adapter.syncDeclarativeRedirectRules !== 'function') {
+      console.warn('[CORE] DNR sync skipped — adapter has no syncDeclarativeRedirectRules');
+      return;
+    }
+    try {
+      await this.adapter.syncDeclarativeRedirectRules(this.rules);
+    } catch (e) {
+      console.error('[CORE] DNR redirect sync failed:', (e as Error)?.message ?? e);
     }
     this.refreshFirefoxBlockingRedirects();
   }
@@ -1114,6 +1168,31 @@ export class APITestingCore {
   }
 
   // ---------------------------------------------------------------------------
+  // Diagnostic log buffer
+  // ---------------------------------------------------------------------------
+
+  /** Log to both console and the in-memory diag buffer. */
+  diag(level: 'log' | 'warn' | 'error', src: string, msg: string): void {
+    console[level](`[${src}] ${msg}`);
+    if (this.diagBuffer.length >= this.MAX_DIAG) {
+      this.diagBuffer.shift();
+    }
+    this.diagBuffer.push({ ts: new Date().toISOString(), level, src, msg });
+  }
+
+  /** Append an entry that was forwarded from the content or injected script. */
+  pushDiagEntry(entry: Omit<DiagEntry, 'ts'> & { ts?: string }): void {
+    if (this.diagBuffer.length >= this.MAX_DIAG) {
+      this.diagBuffer.shift();
+    }
+    this.diagBuffer.push({ ts: entry.ts ?? new Date().toISOString(), level: entry.level, src: entry.src, msg: entry.msg });
+  }
+
+  getDiagLogs(): DiagEntry[] {
+    return [...this.diagBuffer];
+  }
+
+  // ---------------------------------------------------------------------------
   // Request / response logging
   // ---------------------------------------------------------------------------
 
@@ -1123,16 +1202,11 @@ export class APITestingCore {
   ): Promise<void> {
     const requestType = requestData.requestType ?? 'graphql';
     if (this.shouldLogAt('basic')) {
-      console.log(`[CORE] Logging ${requestType} request for tab ${tabId}:`, {
-        requestId: requestData.requestId,
-        operationName: requestData.operationName,
-        method: requestData.method,
-        url: requestData.url,
-      });
+      this.diag('log', 'CORE', `LOG_REQUEST tab=${tabId} type=${requestType} op=${requestData.operationName ?? '-'} method=${requestData.method ?? '-'} url=${requestData.url}`);
     }
 
     if (!tabId) {
-      console.warn('[CORE] No tab ID provided for request logging');
+      this.diag('warn', 'CORE', 'LOG_REQUEST: no tabId');
       return;
     }
 
@@ -1216,7 +1290,7 @@ export class APITestingCore {
     tabId: number | undefined
   ): Promise<void> {
     if (!tabId) {
-      console.warn('[CORE] No tab ID provided for response logging');
+      this.diag('warn', 'CORE', 'LOG_RESPONSE: no tabId');
       return;
     }
 
@@ -1227,12 +1301,7 @@ export class APITestingCore {
 
     const requestType = responseData.requestType ?? 'graphql';
     if (this.shouldLogAt('basic')) {
-      console.log(`[CORE] Logging ${requestType} response for tab ${tabId}:`, {
-        requestId: responseData.requestId,
-        status: responseData.status,
-        hasResponse: !!responseData.response,
-        error: responseData.error,
-      });
+      this.diag('log', 'CORE', `LOG_RESPONSE tab=${tabId} type=${requestType} id=${responseData.requestId} status=${responseData.status ?? '-'} err=${responseData.error ?? '-'}`);
     }
 
     const endTime = Date.now();
@@ -1313,19 +1382,22 @@ export class APITestingCore {
 
         case 'ADD_RULE': {
           const ruleId = this.addRule(msg.rule as Partial<ApiRule>);
-          await this.saveRules();
-
-          await this.adapter.notifyDevTools('RULE_ADDED', {
-            ruleId,
-            rule: this.rules.get(ruleId),
-          });
-          await this.adapter.notifyPopup('RULES_UPDATED', {
-            ruleId,
-            rule: this.rules.get(ruleId),
-          });
-
-          sendResponse({ success: true, ruleId });
-          void this.syncRedirectRules();
+          try {
+            await this.saveRules();
+            await this.syncRedirectRules();
+            await this.adapter.notifyDevTools('RULE_ADDED', {
+              ruleId,
+              rule: this.rules.get(ruleId),
+            });
+            await this.adapter.notifyPopup('RULES_UPDATED', {
+              ruleId,
+              rule: this.rules.get(ruleId),
+            });
+            sendResponse({ success: true, ruleId });
+          } catch (error) {
+            await this.syncRedirectRules();
+            throw error;
+          }
           break;
         }
 
@@ -1334,15 +1406,18 @@ export class APITestingCore {
             msg.ruleId as string,
             msg.rule as Partial<ApiRule>
           );
-          await this.saveRules();
-
-          await this.adapter.notifyDevTools('RULE_UPDATED', {
-            ruleId: msg.ruleId,
-            rule: this.rules.get(msg.ruleId as string),
-          });
-
-          sendResponse({ success: true });
-          void this.syncRedirectRules();
+          try {
+            await this.saveRules();
+            await this.syncRedirectRules();
+            await this.adapter.notifyDevTools('RULE_UPDATED', {
+              ruleId: msg.ruleId,
+              rule: this.rules.get(msg.ruleId as string),
+            });
+            sendResponse({ success: true });
+          } catch (error) {
+            await this.syncRedirectRules();
+            throw error;
+          }
           break;
         }
 
@@ -1359,6 +1434,7 @@ export class APITestingCore {
 
           this.deleteRule(ruleId);
           await this.saveRules();
+          await this.syncRedirectRules();
 
           // Respond before broadcasting so the DevTools panel gets an ack even if the push fails.
           sendResponse({ success: true });
@@ -1641,6 +1717,42 @@ export class APITestingCore {
           } catch (err) {
             sendResponse({ success: false, error: err instanceof Error ? err.message : 'Fetch failed' });
           }
+          break;
+        }
+
+        case 'PROXY_FETCH': {
+          // Proxy a fetch through the background script to bypass CORS restrictions.
+          // Used by the injected script for redirect rules inside cross-origin iframes.
+          const pf = msg as { url: string; method?: string; headers?: Record<string, string>; body?: string };
+          try {
+            const res = await fetch(pf.url, {
+              method: pf.method || 'GET',
+              headers: pf.headers || {},
+              body: pf.body || undefined,
+            });
+            const body = await res.text();
+            const headers: Record<string, string> = {};
+            res.headers.forEach((v: string, k: string) => { headers[k] = v; });
+            sendResponse({ success: true, status: res.status, statusText: res.statusText, body, headers });
+          } catch (err) {
+            sendResponse({ success: false, error: err instanceof Error ? err.message : 'Proxy fetch failed' });
+          }
+          break;
+        }
+
+        case 'GET_DIAGNOSTIC_LOGS': {
+          sendResponse({ success: true, logs: this.getDiagLogs() });
+          break;
+        }
+
+        case 'LOG_DIAG': {
+          this.pushDiagEntry({
+            ts: msg.ts as string | undefined,
+            level: (msg.level as DiagEntry['level']) ?? 'log',
+            src: (msg.src as string) ?? 'unknown',
+            msg: (msg.msg as string) ?? '',
+          });
+          sendResponse({ success: true });
           break;
         }
 

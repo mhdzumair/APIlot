@@ -14,6 +14,7 @@ import {
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
 
@@ -133,6 +134,35 @@ export function SettingsTab() {
   const { settings, aiSettings, updateSettings, updateAISettings } =
     useSettingsStore();
 
+  const [exportingLogs, setExportingLogs] = useState(false);
+  const [excludeText, setExcludeText] = useState<string>(() => {
+    const nc = settings.networkCapture;
+    return nc?.excludeSubstrings?.join('\n') ?? '';
+  });
+
+  async function handleExportLogs() {
+    setExportingLogs(true);
+    try {
+      const res = await sendMsg({ type: 'GET_DIAGNOSTIC_LOGS' });
+      if (!res?.success) return;
+      const ts = new Date().toISOString().replace(/[:.]/g, '-');
+      const lines = res.logs.map(
+        (e) => `${e.ts} [${e.level.toUpperCase()}] [${e.src}] ${e.msg}`
+      );
+      const blob = new Blob([lines.join('\n')], { type: 'text/plain' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `apilot-diag-${ts}.txt`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.warn('[SettingsTab] Failed to export logs:', err);
+    } finally {
+      setExportingLogs(false);
+    }
+  }
+
   // Local capture toggle state (merged from/to settings.networkCapture)
   const [captureToggles, setCaptureToggles] = useState<CaptureToggles>(() => {
     const nc = settings.networkCapture as unknown as Partial<CaptureToggles> | undefined;
@@ -154,7 +184,7 @@ export function SettingsTab() {
         if (settingsRes?.success && settingsRes.settings) {
           updateSettings(settingsRes.settings);
           // Update capture toggles from loaded settings
-          const nc = settingsRes.settings.networkCapture as unknown as Partial<CaptureToggles> | undefined;
+          const nc = settingsRes.settings.networkCapture as unknown as (Partial<CaptureToggles> & { excludeSubstrings?: string[] }) | undefined;
           if (nc) {
             setCaptureToggles((prev) => ({
               ...prev,
@@ -164,6 +194,9 @@ export function SettingsTab() {
               captureRequestBody: nc.captureRequestBody ?? prev.captureRequestBody,
               captureResponseBody: nc.captureResponseBody ?? prev.captureResponseBody,
             }));
+            if (nc.excludeSubstrings) {
+              setExcludeText(nc.excludeSubstrings.join('\n'));
+            }
           }
         }
       } catch (err) {
@@ -218,17 +251,37 @@ export function SettingsTab() {
   // Handlers — Network Capture
   // -------------------------------------------------------------------------
 
+  function buildNetworkCapture(toggleOverrides?: Partial<CaptureToggles>, excludeOverride?: string): Settings['networkCapture'] {
+    const excludeSubstrings = (excludeOverride ?? excludeText)
+      .split('\n')
+      .map((s) => s.trim())
+      .filter(Boolean);
+    return {
+      ...(settings.networkCapture ?? {}),
+      ...(toggleOverrides ? { ...captureToggles, ...toggleOverrides } : captureToggles),
+      excludeSubstrings,
+    } as unknown as Settings['networkCapture'];
+  }
+
   async function handleCaptureToggle(key: NetworkCaptureKey, checked: boolean) {
     const updated = { ...captureToggles, [key]: checked };
     setCaptureToggles(updated);
-    // Merge into settings.networkCapture — cast via unknown since the base type
-    // uses a different NetworkCapture shape from the legacy boolean toggles.
-    const networkCapture = updated as unknown as Settings['networkCapture'];
+    const networkCapture = buildNetworkCapture(updated);
     updateSettings({ networkCapture });
     try {
       await sendMsg({ type: 'UPDATE_SETTINGS', settings: { networkCapture } });
     } catch (err) {
       console.warn('[SettingsTab] Failed to update network capture:', err);
+    }
+  }
+
+  async function handleExcludeSave() {
+    const networkCapture = buildNetworkCapture();
+    updateSettings({ networkCapture });
+    try {
+      await sendMsg({ type: 'UPDATE_SETTINGS', settings: { networkCapture } });
+    } catch (err) {
+      console.warn('[SettingsTab] Failed to save exclude patterns:', err);
     }
   }
 
@@ -373,6 +426,41 @@ export function SettingsTab() {
       </section>
 
       {/* ------------------------------------------------------------------ */}
+      {/* Monitoring Exclusions                                                */}
+      {/* ------------------------------------------------------------------ */}
+      <section>
+        <SectionHeader title="Monitoring Exclusions" />
+
+        <div className="space-y-3">
+          <p className="text-xs text-muted-foreground">
+            Requests whose URL contains any of these substrings will be completely
+            skipped by the interceptor — no hold, no logging. One pattern per line.
+            Useful for media streams, AES key endpoints, or anti-bot-sensitive URLs.
+          </p>
+          <Textarea
+            value={excludeText}
+            onChange={(e) => setExcludeText(e.target.value)}
+            placeholder={[
+              '.m3u8',
+              '.ts',
+              'videokey.php',
+              'segment',
+            ].join('\n')}
+            className="text-xs font-mono resize-none h-28"
+            spellCheck={false}
+          />
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleExcludeSave}
+            className="text-xs"
+          >
+            Save Exclusions
+          </Button>
+        </div>
+      </section>
+
+      {/* ------------------------------------------------------------------ */}
       {/* AI Settings                                                          */}
       {/* ------------------------------------------------------------------ */}
       <section>
@@ -489,6 +577,34 @@ export function SettingsTab() {
             className="text-xs"
           >
             Reset Stats
+          </Button>
+        </div>
+      </section>
+
+      {/* ------------------------------------------------------------------ */}
+      {/* Diagnostics                                                          */}
+      {/* ------------------------------------------------------------------ */}
+      <section>
+        <SectionHeader title="Diagnostics" />
+
+        <div className="space-y-2">
+          <p className="text-xs text-muted-foreground">
+            Export background and injected-script logs for debugging. Useful when
+            DevTools is unavailable (e.g. Firefox for Android).
+          </p>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleExportLogs}
+            disabled={exportingLogs}
+            className="text-xs gap-2"
+          >
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+              <polyline points="7 10 12 15 17 10" />
+              <line x1="12" y1="15" x2="12" y2="3" />
+            </svg>
+            {exportingLogs ? 'Exporting…' : 'Export Logs'}
           </Button>
         </div>
       </section>

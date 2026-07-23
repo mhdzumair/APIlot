@@ -151,7 +151,7 @@ npm run dev:firefox-android -- --adb-device <device-serial>
 npm run dev:firefox-android -- --firefox-apk org.mozilla.firefox_beta
 ```
 
-Common `--firefox-apk` values: `org.mozilla.fenix` (stable, default), `org.mozilla.firefox_beta`, `org.mozilla.firefox`.
+The script auto-discovers the installed Firefox APK. Use `--firefox-apk` only if you have multiple Firefox variants and want to target a specific one (e.g. `org.mozilla.fenix`, `org.mozilla.firefox_beta`).
 
 ```bash
 npm run package      # zip all browsers for store submission

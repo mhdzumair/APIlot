@@ -35,6 +35,14 @@ export default defineUnlistedScript(() => {
     '.woff', '.woff2', '.ttf', '.eot', '.map', '.html', '.htm',
   ];
 
+  // about:blank and sandboxed iframes expose window.location.origin as the string
+  // "null" (not JS null). Using "null" as a postMessage targetOrigin throws:
+  //   "Invalid target origin 'null'". Fall back to '*' in that case.
+  function pageOrigin(): string {
+    const o = window.location.origin;
+    return o && o !== 'null' ? o : '*';
+  }
+
   window.addEventListener('message', (event) => {
     if (event.source !== window || (event.data as any)?.type !== 'APILOT_SET_NETWORK_CAPTURE') return;
     networkCaptureSettings = {
@@ -67,29 +75,41 @@ export default defineUnlistedScript(() => {
     };
   }
 
+  function diagLog(level: 'log' | 'warn' | 'error', msg: string): void {
+    window.postMessage(
+      { type: 'APILOT_DIAG', payload: { level, src: 'injected', msg, ts: new Date().toISOString() } },
+      pageOrigin(),
+    );
+  }
+
+  const MEDIA_CONTENT_TYPES = [
+    'video/', 'audio/', 'application/vnd.apple.mpegurl', 'application/x-mpegurl',
+    'application/octet-stream', 'application/mp4', 'video/mp2t',
+  ];
+
+  function isMediaResponse(response: Response): boolean {
+    const ct = (response.headers.get('content-type') || '').toLowerCase();
+    return MEDIA_CONTENT_TYPES.some((t) => ct.startsWith(t));
+  }
+
   // Capture response data and send to content script
   async function captureResponse(requestId: string, response: Response, requestType = 'graphql') {
-    console.log(`📥 [APILOT] Capturing ${requestType} response for request ${requestId}`, {
-      status: response.status,
-      statusText: response.statusText,
-      url: response.url,
-    });
-
     try {
-      // Clone the response to read it without consuming the original
-      const responseClone = response.clone();
-      const responseText = await responseClone.text();
-      let responseData: any;
+      const contentLengthHeader = response.headers.get('content-length');
+      let responseData: any = null;
+      let responseText = '';
 
-      try {
-        responseData = JSON.parse(responseText);
-        console.log(`✅ [APILOT] Response data parsed for ${requestId}:`, responseData);
-      } catch (parseError) {
-        console.log(`⚠️ [APILOT] Response is not JSON for ${requestId}, treating as text`);
-        responseData = responseText;
+      // Skip reading the body for binary/media responses — just record metadata
+      if (!isMediaResponse(response)) {
+        const responseClone = response.clone();
+        responseText = await responseClone.text();
+        try {
+          responseData = JSON.parse(responseText);
+        } catch {
+          responseData = responseText;
+        }
       }
 
-      const contentLengthHeader = response.headers.get('content-length');
       const transferSize = contentLengthHeader
         ? parseInt(contentLengthHeader, 10)
         : responseText
@@ -107,14 +127,9 @@ export default defineUnlistedScript(() => {
         transferSize: transferSize || undefined,
       };
 
-      window.postMessage({ type: 'API_RESPONSE_CAPTURED', payload }, window.location.origin || '*');
-      console.log(`📤 [APILOT] Response message sent for ${requestId}`, payload);
+      window.postMessage({ type: 'API_RESPONSE_CAPTURED', payload }, pageOrigin());
     } catch (error: any) {
-      console.error(`❌ [APILOT] Failed to capture response for ${requestId}:`, {
-        message: error.message,
-        name: error.name,
-        stack: error.stack,
-      });
+      console.error(`❌ [APILOT] Failed to capture response for ${requestId}:`, error.message);
 
       const errorPayload = {
         requestId,
@@ -126,7 +141,7 @@ export default defineUnlistedScript(() => {
         timestamp: new Date().toISOString(),
       };
 
-      window.postMessage({ type: 'API_RESPONSE_CAPTURED', payload: errorPayload }, window.location.origin || '*');
+      window.postMessage({ type: 'API_RESPONSE_CAPTURED', payload: errorPayload }, pageOrigin());
       console.log(`📤 [APILOT] Error response message sent for ${requestId}`, errorPayload);
     }
   }
@@ -225,21 +240,24 @@ export default defineUnlistedScript(() => {
     }
 
     const nc = networkCaptureSettings || { useFilters: false };
+    const urlLower = policyUrl.toLowerCase();
+
+    // excludeSubstrings always applies — even when useFilters is false.
+    // This lets users exclude streaming/media URLs without enabling full filter mode.
+    const exclude = (nc.excludeSubstrings || []).map((s: string) => String(s).toLowerCase());
+    if (exclude.some((sub: string) => sub && urlLower.includes(sub))) {
+      return false;
+    }
+
     if (!nc.useFilters) {
       return true;
     }
 
-    const urlLower = policyUrl.toLowerCase();
     const urlPath = urlLower.split('?')[0];
     if (
       nc.skipStaticExtensions &&
       NETWORK_CAPTURE_STATIC_EXTENSIONS.some((ext) => urlPath.endsWith(ext))
     ) {
-      return false;
-    }
-
-    const exclude = (nc.excludeSubstrings || []).map((s: string) => String(s).toLowerCase());
-    if (exclude.some((sub: string) => sub && urlLower.includes(sub))) {
       return false;
     }
 
@@ -476,10 +494,10 @@ export default defineUnlistedScript(() => {
         };
       }
 
-      console.log(`📋 [APILOT] ${requestType.toUpperCase()} request detected:`, payload);
+      diagLog('log', `INTERCEPT ${requestType} ${(payload as any).method ?? 'GET'} ${resolvedUrl}`);
 
       // Notify content script about detected request
-      window.postMessage({ type: 'API_REQUEST_DETECTED', payload }, window.location.origin || '*');
+      window.postMessage({ type: 'API_REQUEST_DETECTED', payload }, pageOrigin());
 
       // Create a promise for rule handling
       const interceptPromise = new Promise((resolve, reject) => {
@@ -494,16 +512,14 @@ export default defineUnlistedScript(() => {
         // Set a shorter timeout to prevent hanging (5 seconds for rule check)
         setTimeout(() => {
           if (pendingRequests.has(requestId)) {
-            console.log(
-              `⏰ [APILOT] Request ${requestId} timed out waiting for rule check, proceeding normally`,
-            );
+            diagLog('warn', `TIMEOUT ${requestType} id=${requestId} — proceeding without rule check`);
             pendingRequests.delete(requestId);
             // Use try-catch to handle any network errors during the actual fetch
             originalFetch
               .call(window, url, options)
               .then((response: Response) => {
-                captureResponse(requestId, response.clone(), requestType).catch(console.error);
                 resolve(response);
+                captureResponse(requestId, response.clone(), requestType).catch(console.error);
               })
               .catch((error: Error) => {
                 console.warn(
@@ -581,9 +597,11 @@ export default defineUnlistedScript(() => {
         case 'API_REQUEST_PROCEED':
         case 'GRAPHQL_REQUEST_PROCEED': {
           const args = (event.data as any).payload.modifiedArgs || originalArgs;
+          diagLog('log', `PROCEED ${requestType} id=${requestId}`);
           const response = await originalFetch.apply(window, args as [RequestInfo, RequestInit?]);
-          await captureResponse(requestId, response.clone(), requestType);
+          diagLog('log', `RESPONSE ${requestType} id=${requestId} status=${response.status} ct=${response.headers.get('content-type') ?? '-'}`);
           resolve(response);
+          captureResponse(requestId, response.clone(), requestType).catch(console.error);
           break;
         }
 
@@ -603,16 +621,16 @@ export default defineUnlistedScript(() => {
 
         default: {
           const defaultResponse = await originalFetch.apply(window, originalArgs as [RequestInfo, RequestInit?]);
-          await captureResponse(requestId, defaultResponse.clone(), requestType);
           resolve(defaultResponse);
+          captureResponse(requestId, defaultResponse.clone(), requestType).catch(console.error);
         }
       }
     } catch (error) {
       console.error('❌ [APILOT] Error handling intercepted request:', error);
       try {
         const fallbackResponse = await originalFetch.apply(window, originalArgs as [RequestInfo, RequestInit?]);
-        await captureResponse(requestId, fallbackResponse.clone(), requestType);
         resolve(fallbackResponse);
+        captureResponse(requestId, fallbackResponse.clone(), requestType).catch(console.error);
       } catch (fallbackError) {
         reject(error);
       }
@@ -676,6 +694,45 @@ export default defineUnlistedScript(() => {
     }
   }
 
+  /**
+   * Proxy a fetch through the extension background to bypass CORS restrictions.
+   * Used for redirect rules inside cross-origin iframes where the page's origin
+   * may not be allowed by the redirect target's CORS policy.
+   */
+  function proxyFetchThroughBackground(targetUrl: string, method: string, headers: Record<string, string>, body?: string): Promise<Response> {
+    return new Promise((resolve, reject) => {
+      const proxyId = generateRequestId();
+      const timeout = setTimeout(() => {
+        window.removeEventListener('message', listener);
+        reject(new TypeError('APILOT proxy fetch timeout'));
+      }, 30000);
+
+      function listener(event: MessageEvent) {
+        if (event.source !== window) return;
+        const d = (event.data as any);
+        if (d?.type !== 'PROXY_REDIRECT_RESPONSE' || d?.payload?.requestId !== proxyId) return;
+        clearTimeout(timeout);
+        window.removeEventListener('message', listener);
+        const p = d.payload;
+        if (!p.success) {
+          reject(new TypeError(p.error || 'Proxy fetch failed'));
+          return;
+        }
+        resolve(new Response(p.body, {
+          status: p.status,
+          statusText: p.statusText,
+          headers: new Headers(p.headers || {}),
+        }));
+      }
+
+      window.addEventListener('message', listener);
+      window.postMessage(
+        { type: 'PROXY_REDIRECT_REQUEST', payload: { requestId: proxyId, url: targetUrl, method, headers, body } },
+        pageOrigin(),
+      );
+    });
+  }
+
   /** Build [url, init] for fetch after a redirect rule (handles string URL or Request). */
   function buildFetchArgsAfterRedirect(rule: any, originalArgs: any[], resolvedSourceUrl: string): any[] {
     const targetUrl = buildRedirectTargetUrl(rule, resolvedSourceUrl);
@@ -736,18 +793,20 @@ export default defineUnlistedScript(() => {
           timestamp: new Date().toISOString(),
         };
 
-        window.postMessage({ type: 'API_RESPONSE_CAPTURED', payload: errorPayload }, window.location.origin || '*');
+        window.postMessage({ type: 'API_RESPONSE_CAPTURED', payload: errorPayload }, pageOrigin());
         reject(new Error(`Request blocked by APIlot rule: ${blockRule.name}`));
         return;
       }
 
       let argsForFetch = originalArgs;
+      let redirectTargetUrl: string | null = null;
       const redirectRule = rules.find((rule: any) => rule.action === 'redirect');
       if (redirectRule) {
         const resolvedSource = resolveArgUrlToString(originalArgs[0], originalArgs[1]);
         const targetUrl = buildRedirectTargetUrl(redirectRule, resolvedSource);
         if (targetUrl) {
           argsForFetch = buildFetchArgsAfterRedirect(redirectRule, originalArgs, resolvedSource);
+          redirectTargetUrl = targetUrl;
           console.log(`🔀 [APILOT] Redirect rule "${redirectRule.name}" → ${targetUrl}`);
         }
       }
@@ -759,7 +818,7 @@ export default defineUnlistedScript(() => {
 
       // Apply all delay rules (sum delays)
       const totalDelay = delayRules.reduce(
-        (sum: number, rule: any) => sum + (rule.delayMs || 1000),
+        (sum: number, rule: any) => sum + (rule.delay || 1000),
         0,
       );
       if (totalDelay > 0) {
@@ -846,10 +905,22 @@ export default defineUnlistedScript(() => {
         finalArgs = [url, modifiedOptions];
       }
 
-      // Execute the request
-      const response = await originalFetch.apply(window, finalArgs as [RequestInfo, RequestInit?]);
-      await captureResponse(requestId, response.clone(), requestType);
+      // Execute the request — use background proxy for redirect in iframes to avoid CORS
+      let response: Response;
+      if (redirectTargetUrl && getFrameContext().isIframe) {
+        const [, opts = {}] = finalArgs as [unknown, RequestInit?];
+        const method = (opts?.method || 'GET').toString().toUpperCase();
+        const hdrs: Record<string, string> = {};
+        if (opts?.headers) {
+          new Headers(opts.headers as HeadersInit).forEach((v, k) => { hdrs[k] = v; });
+        }
+        const bodyStr = opts?.body != null ? String(opts.body) : undefined;
+        response = await proxyFetchThroughBackground(redirectTargetUrl, method, hdrs, bodyStr);
+      } else {
+        response = await originalFetch.apply(window, finalArgs as [RequestInfo, RequestInit?]);
+      }
       resolve(response);
+      captureResponse(requestId, response.clone(), requestType).catch(console.error);
     } catch (error) {
       console.error('Error applying multiple rules:', error);
       reject(error);
@@ -868,13 +939,13 @@ export default defineUnlistedScript(() => {
     try {
       switch (rule.action) {
         case 'delay': {
-          console.log(`⏱️ [APILOT] Applying ${rule.delayMs || 1000}ms delay`);
+          console.log(`⏱️ [APILOT] Applying ${rule.delay || 1000}ms delay`);
           await new Promise((delayResolve) =>
-            setTimeout(delayResolve, rule.delayMs || 1000),
+            setTimeout(delayResolve, rule.delay || 1000),
           );
           const delayedResponse = await originalFetch.apply(window, originalArgs as [RequestInfo, RequestInit?]);
-          await captureResponse(requestId, delayedResponse.clone(), requestType);
           resolve(delayedResponse);
+          captureResponse(requestId, delayedResponse.clone(), requestType).catch(console.error);
           break;
         }
 
@@ -889,8 +960,8 @@ export default defineUnlistedScript(() => {
             headers: new Headers(responseHeaders),
           });
 
-          await captureResponse(requestId, mockResponse.clone(), requestType);
           resolve(mockResponse);
+          captureResponse(requestId, mockResponse.clone(), requestType).catch(console.error);
           break;
         }
 
@@ -926,8 +997,8 @@ export default defineUnlistedScript(() => {
           }
 
           const modifiedResponse = await originalFetch.call(window, url, modifiedOptions);
-          await captureResponse(requestId, modifiedResponse.clone(), requestType);
           resolve(modifiedResponse);
+          captureResponse(requestId, modifiedResponse.clone(), requestType).catch(console.error);
           break;
         }
 
@@ -945,7 +1016,7 @@ export default defineUnlistedScript(() => {
             timestamp: new Date().toISOString(),
           };
 
-          window.postMessage({ type: 'API_RESPONSE_CAPTURED', payload: errorPayload }, window.location.origin || '*');
+          window.postMessage({ type: 'API_RESPONSE_CAPTURED', payload: errorPayload }, pageOrigin());
           reject(new Error(`Request blocked by APIlot rule: ${rule.name}`));
           break;
         }
@@ -955,24 +1026,39 @@ export default defineUnlistedScript(() => {
           const targetUrl = buildRedirectTargetUrl(rule, resolvedSource);
           if (!targetUrl) {
             const fallbackResponse = await originalFetch.apply(window, originalArgs as [RequestInfo, RequestInit?]);
-            await captureResponse(requestId, fallbackResponse.clone(), requestType);
             resolve(fallbackResponse);
+            captureResponse(requestId, fallbackResponse.clone(), requestType).catch(console.error);
             break;
           }
           const nextArgs = buildFetchArgsAfterRedirect(rule, originalArgs, resolvedSource);
           console.log(
             `🔀 [APILOT] Redirect rule "${rule.name}" ${resolvedSource} → ${targetUrl}`,
           );
-          const redirectResponse = await originalFetch.apply(window, nextArgs as [RequestInfo, RequestInit?]);
-          await captureResponse(requestId, redirectResponse.clone(), requestType);
+          let redirectResponse: Response;
+          if (getFrameContext().isIframe) {
+            // Inside an iframe the fetch carries the iframe's origin which may be
+            // rejected by the redirect target's CORS policy. Route through the
+            // background script which has <all_urls> and is not CORS-restricted.
+            const [, opts = {}] = nextArgs as [unknown, RequestInit?];
+            const method = (opts?.method || 'GET').toString().toUpperCase();
+            const hdrs: Record<string, string> = {};
+            if (opts?.headers) {
+              new Headers(opts.headers as HeadersInit).forEach((v, k) => { hdrs[k] = v; });
+            }
+            const bodyStr = opts?.body != null ? String(opts.body) : undefined;
+            redirectResponse = await proxyFetchThroughBackground(targetUrl, method, hdrs, bodyStr);
+          } else {
+            redirectResponse = await originalFetch.apply(window, nextArgs as [RequestInfo, RequestInit?]);
+          }
           resolve(redirectResponse);
+          captureResponse(requestId, redirectResponse.clone(), requestType).catch(console.error);
           break;
         }
 
         default: {
           const defaultResponse = await originalFetch.apply(window, originalArgs as [RequestInfo, RequestInit?]);
-          await captureResponse(requestId, defaultResponse.clone(), requestType);
           resolve(defaultResponse);
+          captureResponse(requestId, defaultResponse.clone(), requestType).catch(console.error);
         }
       }
     } catch (error) {
@@ -998,18 +1084,22 @@ export default defineUnlistedScript(() => {
     return statusTexts[statusCode] || 'Unknown';
   }
 
-  // Override XMLHttpRequest for better coverage
-  console.log('🔧 [APILOT] Installing XMLHttpRequest overrides...');
+  // Override XMLHttpRequest for better coverage.
+  // We keep a reference to the ORIGINAL addEventListener so our passive observers
+  // always bypass any future wrapper — including our own send() override.
+  // We do NOT override addEventListener on the prototype, which would wrap every
+  // load/error listener the page registers and could silently break callbacks if
+  // our wrapper throws (e.g. anti-bot–protected AES key endpoints).
 
   const originalXHROpen = XMLHttpRequest.prototype.open;
   const originalXHRSend = XMLHttpRequest.prototype.send;
   const originalXHRSetRequestHeader = XMLHttpRequest.prototype.setRequestHeader;
+  const originalXHRAddEventListener = XMLHttpRequest.prototype.addEventListener;
 
   XMLHttpRequest.prototype.open = function (this: XMLHttpRequest, method: string, url: string | URL, async?: boolean, user?: string | null, password?: string | null) {
     (this as any)._apilot_method = method;
     (this as any)._apilot_url = url;
     (this as any)._apilot_headers = {};
-    (this as any)._apilot_async = async !== false; // Default to true
     return originalXHROpen.call(this, method, url, async as boolean, user, password);
   };
 
@@ -1018,52 +1108,6 @@ export default defineUnlistedScript(() => {
     (this as any)._apilot_headers[name] = value;
     return originalXHRSetRequestHeader.call(this, name, value);
   };
-
-  // Override addEventListener to capture events added before send()
-  const originalXHRAddEventListener = XMLHttpRequest.prototype.addEventListener;
-  XMLHttpRequest.prototype.addEventListener = function (this: XMLHttpRequest, type: string, listener: any, options?: any) {
-    const xhr = this as any;
-
-    // Wrap load/loadend/error listeners to ensure we capture the response
-    if (type === 'load' || type === 'loadend') {
-      const wrappedListener = (_event: Event) => {
-        // Trigger our response capture if this XHR was being monitored
-        if (xhr._apilot_requestId && !xhr._apilot_responseCaptured && xhr._apilot_handleResponse) {
-          xhr._apilot_handleResponse();
-        }
-        listener(_event);
-      };
-      return originalXHRAddEventListener.call(this, type, wrappedListener, options);
-    }
-
-    if (type === 'error') {
-      const wrappedListener = (_event: Event) => {
-        if (xhr._apilot_requestId && !xhr._apilot_responseCaptured) {
-          xhr._apilot_responseCaptured = true;
-          window.postMessage(
-            {
-              type: 'API_RESPONSE_CAPTURED',
-              payload: {
-                requestId: xhr._apilot_requestId,
-                requestType: xhr._apilot_requestType,
-                response: null,
-                error: 'Network error',
-                status: 0,
-                statusText: 'Error',
-                headers: {},
-                timestamp: new Date().toISOString(),
-              },
-            },
-            window.location.origin || '*',
-          );
-        }
-        listener(_event);
-      };
-      return originalXHRAddEventListener.call(this, type, wrappedListener, options);
-    }
-
-    return originalXHRAddEventListener.call(this, type, listener, options);
-  } as any;
 
   XMLHttpRequest.prototype.send = function (data?: Document | XMLHttpRequestBodyInit | null) {
     const xhr = this as any;
@@ -1075,23 +1119,15 @@ export default defineUnlistedScript(() => {
         headers: xhr._apilot_headers || {},
       };
 
-      // Convert relative URL to absolute URL
       let absoluteUrl = xhr._apilot_url;
       try {
-        if (
-          xhr._apilot_url &&
-          !xhr._apilot_url.startsWith('http') &&
-          !xhr._apilot_url.startsWith('//')
-        ) {
-          if (xhr._apilot_url.startsWith('/')) {
-            absoluteUrl = window.location.origin + xhr._apilot_url;
-          } else {
-            absoluteUrl = new URL(xhr._apilot_url, window.location.href).href;
-          }
+        if (xhr._apilot_url && !xhr._apilot_url.startsWith('http') && !xhr._apilot_url.startsWith('//')) {
+          absoluteUrl = xhr._apilot_url.startsWith('/')
+            ? window.location.origin + xhr._apilot_url
+            : new URL(xhr._apilot_url, window.location.href).href;
         }
       } catch (e) {
         console.warn('[APILOT] Could not parse XHR URL:', xhr._apilot_url);
-        absoluteUrl = xhr._apilot_url;
       }
 
       const requestType = detectRequestType(absoluteUrl, options);
@@ -1100,12 +1136,10 @@ export default defineUnlistedScript(() => {
         const requestId = generateRequestId();
         xhr._apilot_requestId = requestId;
         xhr._apilot_requestType = requestType;
-        xhr._apilot_startTime = Date.now();
 
-        // Get frame context for grouping
         const frameContext = getFrameContext();
-
         let payload: any;
+
         if (requestType === 'graphql') {
           const requestData = parseGraphQLRequest(data);
           payload = {
@@ -1117,7 +1151,7 @@ export default defineUnlistedScript(() => {
             variables: requestData.variables,
             requestHeaders: xhr._apilot_headers || {},
             timestamp: new Date().toISOString(),
-            frameContext: frameContext,
+            frameContext,
           };
         } else {
           const requestData = parseRESTRequest(absoluteUrl, options);
@@ -1133,59 +1167,52 @@ export default defineUnlistedScript(() => {
             body: requestData.body,
             requestHeaders: xhr._apilot_headers || {},
             timestamp: new Date().toISOString(),
-            frameContext: frameContext,
+            frameContext,
           };
         }
 
-        console.log(`📋 [APILOT] XHR ${requestType.toUpperCase()} request detected:`, payload);
+        window.postMessage({ type: 'API_REQUEST_DETECTED', payload }, pageOrigin());
 
-        window.postMessage({ type: 'API_REQUEST_DETECTED', payload }, window.location.origin || '*');
-
-        // Create response handler function and store on xhr for addEventListener wrapper
-        const handleXHRResponse = function () {
+        // Passive response observer — attached via the ORIGINAL addEventListener so
+        // we never replace or wrap any handler the page already registered.
+        // This means our capture can't throw and block a player's load callback.
+        const captureXHRResponse = function () {
           if (xhr._apilot_responseCaptured) return;
           xhr._apilot_responseCaptured = true;
 
-          let responseData: any;
+          // responseType 'arraybuffer'/'blob'/'document' throw InvalidStateError when
+          // accessing responseText — only read it for the two text-compatible types.
+          let responseData: any = null;
+          let responseTextBytes = 0;
           try {
             if (xhr.responseType === '' || xhr.responseType === 'text') {
-              responseData = xhr.responseText ? JSON.parse(xhr.responseText) : null;
+              const text = xhr.responseText || '';
+              if (text) {
+                responseTextBytes = new TextEncoder().encode(text).length;
+                try { responseData = JSON.parse(text); } catch (_e) { responseData = text; }
+              }
             } else if (xhr.responseType === 'json') {
               responseData = xhr.response;
-            } else {
-              responseData = xhr.response;
             }
-          } catch (e) {
-            responseData = xhr.responseText || xhr.response;
-          }
+            // arraybuffer / blob / document: leave responseData null
+          } catch (_e) { /* guard against any responseType access error */ }
 
-          // Get response headers
           const responseHeaders: Record<string, string> = {};
           try {
             const headerStr = xhr.getAllResponseHeaders();
             if (headerStr) {
               headerStr.split('\r\n').forEach((line: string) => {
-                const parts = line.split(': ');
-                if (parts.length === 2) {
-                  responseHeaders[parts[0]] = parts[1];
-                }
+                const idx = line.indexOf(': ');
+                if (idx !== -1) responseHeaders[line.slice(0, idx)] = line.slice(idx + 2);
               });
             }
-          } catch (e) {
-            // Ignore header parsing errors
-          }
+          } catch (_e) { /* ignore */ }
 
-          console.log(`📥 [APILOT] XHR response captured for ${requestId}:`, xhr.status);
+          const xhrContentLength = parseInt(responseHeaders['content-length'] || responseHeaders['Content-Length'] || '0', 10);
+          const xhrTransferSize = xhrContentLength || responseTextBytes;
 
-          const xhrContentLength = parseInt(
-            responseHeaders['content-length'] || responseHeaders['Content-Length'] || '0',
-            10,
-          );
-          const xhrTransferSize = xhrContentLength ||
-            (xhr.responseText ? new TextEncoder().encode(xhr.responseText).length : 0);
-
-          window.postMessage(
-            {
+          try {
+            window.postMessage({
               type: 'API_RESPONSE_CAPTURED',
               payload: {
                 requestId,
@@ -1197,109 +1224,34 @@ export default defineUnlistedScript(() => {
                 timestamp: new Date().toISOString(),
                 transferSize: xhrTransferSize || undefined,
               },
+            }, pageOrigin());
+          } catch (_e) { /* ignore postMessage errors */ }
+        };
+
+        const captureXHRError = function (label: string) {
+          if (xhr._apilot_responseCaptured) return;
+          xhr._apilot_responseCaptured = true;
+          window.postMessage({
+            type: 'API_RESPONSE_CAPTURED',
+            payload: {
+              requestId,
+              requestType,
+              response: null,
+              error: label,
+              status: 0,
+              statusText: label,
+              headers: {},
+              timestamp: new Date().toISOString(),
             },
-            window.location.origin || '*',
-          );
+          }, pageOrigin());
         };
 
-        // Store the handler on the xhr object so addEventListener wrapper can access it
-        xhr._apilot_handleResponse = handleXHRResponse;
-
-        // Handle response via multiple event types for better coverage
-        const originalOnReadyStateChange = xhr.onreadystatechange;
-        const originalOnLoad = xhr.onload;
-        const originalOnError = xhr.onerror;
-        const originalOnTimeout = xhr.ontimeout;
-
-        xhr.onreadystatechange = function () {
-          if (xhr.readyState === 4) {
-            handleXHRResponse();
-          }
-          if (originalOnReadyStateChange) {
-            return originalOnReadyStateChange.apply(this, arguments);
-          }
-        };
-
-        xhr.onload = function () {
-          handleXHRResponse();
-          if (originalOnLoad) {
-            return originalOnLoad.apply(this, arguments);
-          }
-        };
-
-        xhr.onerror = function () {
-          if (!xhr._apilot_responseCaptured) {
-            xhr._apilot_responseCaptured = true;
-            window.postMessage(
-              {
-                type: 'API_RESPONSE_CAPTURED',
-                payload: {
-                  requestId,
-                  requestType,
-                  response: null,
-                  error: 'Network error',
-                  status: 0,
-                  statusText: 'Error',
-                  headers: {},
-                  timestamp: new Date().toISOString(),
-                },
-              },
-              window.location.origin || '*',
-            );
-          }
-          if (originalOnError) {
-            return originalOnError.apply(this, arguments);
-          }
-        };
-
-        xhr.ontimeout = function () {
-          if (!xhr._apilot_responseCaptured) {
-            xhr._apilot_responseCaptured = true;
-            window.postMessage(
-              {
-                type: 'API_RESPONSE_CAPTURED',
-                payload: {
-                  requestId,
-                  requestType,
-                  response: null,
-                  error: 'Request timeout',
-                  status: 0,
-                  statusText: 'Timeout',
-                  headers: {},
-                  timestamp: new Date().toISOString(),
-                },
-              },
-              window.location.origin || '*',
-            );
-          }
-          if (originalOnTimeout) {
-            return originalOnTimeout.apply(this, arguments);
-          }
-        };
-
-        // Also listen via addEventListener for libraries that use it
-        xhr.addEventListener('load', handleXHRResponse);
-        xhr.addEventListener('error', function () {
-          if (!xhr._apilot_responseCaptured) {
-            xhr._apilot_responseCaptured = true;
-            window.postMessage(
-              {
-                type: 'API_RESPONSE_CAPTURED',
-                payload: {
-                  requestId,
-                  requestType,
-                  response: null,
-                  error: 'Network error',
-                  status: 0,
-                  statusText: 'Error',
-                  headers: {},
-                  timestamp: new Date().toISOString(),
-                },
-              },
-              window.location.origin || '*',
-            );
-          }
+        originalXHRAddEventListener.call(xhr, 'readystatechange', function () {
+          if (xhr.readyState === 4) captureXHRResponse();
         });
+        originalXHRAddEventListener.call(xhr, 'error', function () { captureXHRError('Network error'); });
+        originalXHRAddEventListener.call(xhr, 'timeout', function () { captureXHRError('Timeout'); });
+        originalXHRAddEventListener.call(xhr, 'abort', function () { captureXHRError('Aborted'); });
       }
     }
 

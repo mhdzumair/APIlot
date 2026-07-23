@@ -11,7 +11,7 @@ type FilterType = 'all' | 'graphql' | 'rest' | 'static';
 type FilterStatus = 'all' | 'success' | 'error' | 'pending';
 
 const TYPE_OPTIONS: { value: FilterType; label: string; title: string }[] = [
-  { value: 'all',     label: 'All',     title: 'Show GraphQL + REST' },
+  { value: 'all',     label: 'All',     title: 'Show GraphQL + REST + static assets' },
   { value: 'graphql', label: 'GQL',     title: 'GraphQL only' },
   { value: 'rest',    label: 'REST',    title: 'REST API only' },
   { value: 'static',  label: 'Static',  title: 'JS / CSS / HTML / static assets' },

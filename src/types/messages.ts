@@ -92,7 +92,10 @@ export type PanelToBackgroundMessage =
   | { type: 'GET_TAB_STATUS'; tabId: number }
   | { type: 'GET_TAB_STATE' }
   // Schema introspection — fetched directly by background script (has <all_urls> host permission)
-  | { type: 'FETCH_INTROSPECTION'; endpoint: string; headers: Record<string, string>; body: string };
+  | { type: 'FETCH_INTROSPECTION'; endpoint: string; headers: Record<string, string>; body: string }
+  // Diagnostics
+  | { type: 'GET_DIAGNOSTIC_LOGS' }
+  | { type: 'LOG_DIAG'; level: 'log' | 'warn' | 'error'; src: string; msg: string; ts?: string };
 
 // ---------------------------------------------------------------------------
 // Background → Content script messages
@@ -177,6 +180,8 @@ export interface MessageResponses {
   FETCH_INTROSPECTION:
     | { success: true; status: number; ok: boolean; body: string }
     | { success: false; error: string };
+  GET_DIAGNOSTIC_LOGS: { success: true; logs: import('../background/core').DiagEntry[] };
+  LOG_DIAG: { success: true };
 }
 
 // Convenience: error response shape returned on unhandled exceptions
