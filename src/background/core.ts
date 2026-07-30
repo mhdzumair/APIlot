@@ -12,6 +12,8 @@ import {
 } from '../shared/ruleMatch';
 import type { RequestMatchData } from '../shared/ruleMatch';
 import type { BrowserAdapter } from './types';
+import { AIMockService } from '../services/AIMockService';
+import type { MockOptions, MockRequest } from '../services/providers/index';
 
 // Internal performance entry shape (not exported; extends LogEntry usage)
 interface PerformanceEntry {
@@ -83,10 +85,12 @@ export class APITestingCore {
         | Record<string, never>
         | { redirectUrl: string })
     | null = null;
+  private aiMockService: AIMockService;
 
   constructor(adapter: BrowserAdapter) {
     this.adapter = adapter;
     this.maxLogSize = 1000;
+    this.aiMockService = new AIMockService();
     this.readyPromise = this.initializeCore();
   }
 
@@ -141,6 +145,7 @@ export class APITestingCore {
       tokensUsed: 0,
       mocksGenerated: 0,
     };
+    await this.aiMockService.initialize(AIMockService.mapCoreSettings(this.aiSettings));
 
     // Initialize performance data
     this.performanceData = (data.performanceData as PerformanceData) || {
@@ -1544,6 +1549,9 @@ export class APITestingCore {
             ...this.aiSettings,
             ...(msg.aiSettings as Partial<AISettings>),
           };
+          await this.aiMockService.initialize(
+            AIMockService.mapCoreSettings(this.aiSettings)
+          );
           await this.saveRules();
           sendResponse({ success: true });
           break;
@@ -1736,6 +1744,59 @@ export class APITestingCore {
             sendResponse({ success: true, status: res.status, statusText: res.statusText, body, headers });
           } catch (err) {
             sendResponse({ success: false, error: err instanceof Error ? err.message : 'Proxy fetch failed' });
+          }
+          break;
+        }
+
+        case 'PREVIEW_AI_MOCK_PROMPT': {
+          const previewReq = msg.request as MockRequest | undefined;
+          const previewReqs = msg.requests as MockRequest[] | undefined;
+          const previewOptions = (msg.options ?? {}) as MockOptions;
+          const previewMulti = msg.multi === true;
+
+          try {
+            const prompt = previewMulti
+              ? this.aiMockService.previewMultiPrompt(previewReqs ?? [], previewOptions)
+              : this.aiMockService.previewPrompt(previewReq!, previewOptions);
+            sendResponse({ success: true, prompt });
+          } catch (error) {
+            sendResponse({
+              success: false,
+              error: (error as Error).message,
+            });
+          }
+          break;
+        }
+
+        case 'GENERATE_AI_MOCK': {
+          const mockReq = msg.request as MockRequest | undefined;
+          const mockReqs = msg.requests as MockRequest[] | undefined;
+          const mockOptions = (msg.options ?? {}) as MockOptions;
+          const mockMulti = msg.multi === true;
+
+          try {
+            const result = mockMulti
+              ? await this.aiMockService.generateMultipleMocks(
+                  mockReqs ?? [],
+                  mockOptions
+                )
+              : await this.aiMockService.generateMock(mockReq!, mockOptions);
+
+            if (result.success) {
+              this.aiSettings.callsCount = (this.aiSettings.callsCount || 0) + 1;
+              this.aiSettings.mocksGenerated = (this.aiSettings.mocksGenerated || 0) + 1;
+              this.aiSettings.tokensUsed =
+                (this.aiSettings.tokensUsed || 0) + (result.tokensUsed || 0);
+              await this.saveRules();
+            }
+
+            sendResponse(result);
+          } catch (error) {
+            sendResponse({
+              success: false,
+              error: (error as Error).message,
+              generationTime: 0,
+            });
           }
           break;
         }

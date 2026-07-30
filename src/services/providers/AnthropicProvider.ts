@@ -58,7 +58,7 @@ export class AnthropicProvider extends BaseProvider implements AIProvider {
       throw new Error('Anthropic API key not configured');
     }
 
-    const prompt = this.buildMockPrompt(request, options);
+    const prompt = this.resolveMockPrompt(request, options);
     const isThinkingModel = this.model.includes('thinking');
 
     const requestBody: Record<string, unknown> = {
@@ -119,7 +119,7 @@ export class AnthropicProvider extends BaseProvider implements AIProvider {
       throw new Error('Anthropic API key not configured');
     }
 
-    const prompt = this.buildMultiMockPrompt(requests, options);
+    const prompt = this.resolveMultiMockPrompt(requests, options);
     const isThinkingModel = this.model.includes('thinking');
 
     const requestBody: Record<string, unknown> = {

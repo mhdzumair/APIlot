@@ -72,7 +72,7 @@ export class AzureProvider extends BaseProvider implements AIProvider {
       throw new Error('Azure OpenAI configuration incomplete');
     }
 
-    const prompt = this.buildMockPrompt(request, options);
+    const prompt = this.resolveMockPrompt(request, options);
     const systemPrompt =
       'You are an expert at generating realistic mock data for APIs. Always return valid JSON only.';
 
@@ -110,7 +110,7 @@ export class AzureProvider extends BaseProvider implements AIProvider {
       throw new Error('Azure OpenAI configuration incomplete');
     }
 
-    const prompt = this.buildMultiMockPrompt(requests, options);
+    const prompt = this.resolveMultiMockPrompt(requests, options);
     const systemPrompt =
       'You are an expert at generating realistic mock data for APIs. Generate consistent data across requests. Always return valid JSON only.';
 

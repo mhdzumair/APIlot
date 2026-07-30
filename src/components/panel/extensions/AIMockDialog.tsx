@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import {
   Dialog,
   DialogContent,
@@ -63,6 +63,9 @@ export function AIMockDialog() {
   const [mode, setMode] = useState<AIMode>('single');
   const [responseMode, setResponseMode] = useState<ResponseMode>('sanitized');
   const [userInstructions, setUserInstructions] = useState('');
+  const [llmPrompt, setLlmPrompt] = useState('');
+  const [isLoadingPrompt, setIsLoadingPrompt] = useState(false);
+  const promptUserEditedRef = useRef(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [isGenerating, setIsGenerating] = useState(false);
   const [result, setResult] = useState<GenerateResult | null>(null);
@@ -70,16 +73,70 @@ export function AIMockDialog() {
 
   const open = aiMockRequest !== null;
 
+  const requestsToMock = useMemo(() => {
+    if (!open || !aiMockRequest) return [];
+    return mode === 'multi' && selectedIds.size > 0
+      ? requestLog.filter((r) => selectedIds.has(r.id))
+      : [aiMockRequest];
+  }, [open, aiMockRequest, mode, selectedIds, requestLog]);
+
+  const buildOptions = useCallback(
+    (includeCustomPrompt: boolean) => ({
+      userContext: userInstructions,
+      responseMode,
+      ...(includeCustomPrompt && llmPrompt.trim()
+        ? { customPrompt: llmPrompt.trim() }
+        : {}),
+    }),
+    [userInstructions, responseMode, llmPrompt]
+  );
+
+  const refreshPromptPreview = useCallback(async () => {
+    if (!aiMockRequest || requestsToMock.length === 0) return;
+    if (mode === 'multi' && selectedIds.size === 0) {
+      setLlmPrompt('');
+      return;
+    }
+
+    setIsLoadingPrompt(true);
+    try {
+      const mockRequests = requestsToMock.map((r) => buildMockRequest(r, responseMode));
+      const options = { userContext: userInstructions, responseMode };
+      const response = await (browser.runtime.sendMessage({
+        type: 'PREVIEW_AI_MOCK_PROMPT',
+        ...(mockRequests.length > 1
+          ? { requests: mockRequests, options, multi: true }
+          : { request: mockRequests[0], options, multi: false }),
+      }) as Promise<{ success: boolean; prompt?: string; error?: string }>);
+
+      if (response?.success && response.prompt != null) {
+        setLlmPrompt(response.prompt);
+      }
+    } catch (err) {
+      console.error('[AIMockDialog] Failed to preview prompt:', err);
+    } finally {
+      setIsLoadingPrompt(false);
+    }
+  }, [aiMockRequest, mode, requestsToMock, responseMode, selectedIds.size, userInstructions]);
+
+  useEffect(() => {
+    if (!open || promptUserEditedRef.current) return;
+    void refreshPromptPreview();
+  }, [open, mode, responseMode, userInstructions, selectedIds, aiMockRequest?.id, refreshPromptPreview]);
+
   const handleOpenChange = useCallback(
     (isOpen: boolean) => {
       if (!isOpen) {
         setAiMockRequest(null);
         setResult(null);
         setUserInstructions('');
+        setLlmPrompt('');
+        promptUserEditedRef.current = false;
         setMode('single');
         setSelectedIds(new Set());
         setIsGenerating(false);
         setCopied(false);
+        setIsLoadingPrompt(false);
       }
     },
     [setAiMockRequest]
@@ -98,24 +155,18 @@ export function AIMockDialog() {
   }, []);
 
   const handleGenerate = useCallback(async () => {
-    if (!aiMockRequest) return;
-
-    const requestsToMock =
-      mode === 'multi' && selectedIds.size > 0
-        ? requestLog.filter((r) => selectedIds.has(r.id))
-        : [aiMockRequest];
+    if (!aiMockRequest || requestsToMock.length === 0) return;
+    if (mode === 'multi' && selectedIds.size === 0) return;
 
     setIsGenerating(true);
     setResult(null);
 
     try {
-      // Build payload for background messaging
       const mockRequests = requestsToMock.map((r) => buildMockRequest(r, responseMode));
-      const options = { userContext: userInstructions, responseMode };
+      const options = buildOptions(true);
 
       let response: GenerateResult;
       if (mockRequests.length > 1) {
-        // Use browser.runtime.sendMessage directly for multi-mock
         response = await (browser.runtime.sendMessage({
           type: 'GENERATE_AI_MOCK',
           requests: mockRequests,
@@ -137,7 +188,7 @@ export function AIMockDialog() {
     } finally {
       setIsGenerating(false);
     }
-  }, [aiMockRequest, mode, selectedIds, requestLog, responseMode, userInstructions]);
+  }, [aiMockRequest, mode, requestsToMock, responseMode, selectedIds.size, buildOptions]);
 
   const handleCopy = useCallback(() => {
     if (!result?.success) return;
@@ -339,6 +390,46 @@ export function AIMockDialog() {
           </div>
         </div>
 
+        {/* LLM prompt preview / edit */}
+        <div className="space-y-1.5">
+          <div className="flex items-center justify-between gap-2">
+            <Label className="text-xs">LLM Prompt</Label>
+            <button
+              type="button"
+              className="text-[10px] text-primary hover:underline disabled:opacity-50"
+              disabled={isLoadingPrompt || isGenerating}
+              onClick={() => {
+                promptUserEditedRef.current = false;
+                void refreshPromptPreview();
+              }}
+            >
+              Reset to auto-generated
+            </button>
+          </div>
+          <p className="text-[10px] text-muted-foreground leading-relaxed">
+            Review and edit the prompt below before sending it to the AI provider.
+            {aiSettings.provider === 'local'
+              ? ' Local generation ignores the prompt and uses pattern-based mocks.'
+              : null}
+          </p>
+          <Textarea
+            value={llmPrompt}
+            onChange={(e) => {
+              promptUserEditedRef.current = true;
+              setLlmPrompt(e.target.value);
+            }}
+            placeholder={
+              isLoadingPrompt
+                ? 'Building prompt…'
+                : mode === 'multi' && selectedIds.size === 0
+                  ? 'Select requests to preview the prompt…'
+                  : 'Prompt will appear here…'
+            }
+            className="text-xs min-h-[160px] resize-y font-mono"
+            disabled={isLoadingPrompt || isGenerating || (mode === 'multi' && selectedIds.size === 0)}
+          />
+        </div>
+
         {/* Loading state */}
         {isGenerating && (
           <div className="flex items-center justify-center gap-2 py-6 text-xs text-muted-foreground">
@@ -416,7 +507,12 @@ export function AIMockDialog() {
           <Button
             size="sm"
             onClick={handleGenerate}
-            disabled={isGenerating || (mode === 'multi' && selectedIds.size === 0)}
+            disabled={
+              isGenerating ||
+              isLoadingPrompt ||
+              !llmPrompt.trim() ||
+              (mode === 'multi' && selectedIds.size === 0)
+            }
           >
             {isGenerating ? 'Generating...' : result?.success ? 'Regenerate' : 'Generate'}
           </Button>

@@ -15,6 +15,7 @@ import type {
   ProviderInfo,
   ModelInfo,
 } from './providers/index.js';
+import type { AISettings as CoreAISettings } from '../types/settings.js';
 
 export interface MockResponse {
   success: true;
@@ -142,6 +143,44 @@ export class AIMockService {
         (provider as { setModel: (m: string) => void }).setModel(settings.customModelName);
       }
     }
+  }
+
+  /** Map panel/core AI settings to the provider service shape. */
+  static mapCoreSettings(settings: CoreAISettings): AISettings {
+    const providerMap: Record<CoreAISettings['provider'], ProviderKey> = {
+      openai: 'openai',
+      anthropic: 'anthropic',
+      azure: 'azure-openai',
+      gemini: 'gemini',
+      openrouter: 'openrouter',
+      local: 'local',
+    };
+
+    return {
+      provider: providerMap[settings.provider] ?? 'local',
+      openaiApiKey: settings.openaiApiKey ?? '',
+      openaiModel: settings.openaiModel ?? 'gpt-4o',
+      anthropicApiKey: settings.anthropicApiKey ?? '',
+      anthropicModel: settings.anthropicModel ?? 'claude-sonnet-4-20250514',
+      azureApiKey: settings.azureApiKey,
+      azureEndpoint: settings.azureEndpoint,
+      azureDeploymentName: settings.azureModel,
+      geminiApiKey: settings.geminiApiKey,
+      geminiModel: settings.geminiModel,
+      openrouterApiKey: settings.openrouterApiKey,
+      openrouterModel: settings.openrouterModel,
+      callsCount: settings.callsCount ?? 0,
+      tokensUsed: settings.tokensUsed ?? 0,
+    };
+  }
+
+  /** Build the LLM user prompt without calling any provider. */
+  previewPrompt(request: MockRequest, options: MockOptions = {}): string {
+    return this.providers.local.previewMockPrompt(request, options);
+  }
+
+  previewMultiPrompt(requests: MockRequest[], options: MockOptions = {}): string {
+    return this.providers.local.previewMultiMockPrompt(requests, options);
   }
 
   // Generate mock for a single request

@@ -38,7 +38,7 @@ export class OpenRouterProvider extends BaseProvider implements AIProvider {
       throw new Error('OpenRouter API key not configured');
     }
 
-    const prompt = this.buildMockPrompt(request, options);
+    const prompt = this.resolveMockPrompt(request, options);
     const referer =
       typeof window !== 'undefined' ? window.location.origin : 'https://apilot.extension';
 
@@ -87,7 +87,7 @@ export class OpenRouterProvider extends BaseProvider implements AIProvider {
       throw new Error('OpenRouter API key not configured');
     }
 
-    const prompt = this.buildMultiMockPrompt(requests, options);
+    const prompt = this.resolveMultiMockPrompt(requests, options);
     const referer =
       typeof window !== 'undefined' ? window.location.origin : 'https://apilot.extension';
 

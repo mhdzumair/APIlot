@@ -19,9 +19,11 @@ export interface MockRequest {
 
 export interface MockOptions {
   userContext?: string;
-  responseMode?: 'full' | 'sanitized' | 'structure' | 'none';
+  responseMode?: 'full' | 'sanitized' | 'structure' | 'none' | 'realistic' | 'error' | 'empty';
   includeExampleResponse?: boolean;
   sharedIds?: Record<string, string>;
+  /** When set, sent to the LLM as-is instead of auto-building a prompt. */
+  customPrompt?: string;
 }
 
 export interface MockResult {

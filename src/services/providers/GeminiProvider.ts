@@ -48,7 +48,7 @@ export class GeminiProvider extends BaseProvider implements AIProvider {
       throw new Error('Gemini API key not configured');
     }
 
-    const prompt = this.buildMockPrompt(request, options);
+    const prompt = this.resolveMockPrompt(request, options);
     const url = `${this.baseUrl}/models/${this.model}:generateContent`;
     const isThinkingModel = this.model.includes('thinking');
 
@@ -108,7 +108,7 @@ export class GeminiProvider extends BaseProvider implements AIProvider {
       throw new Error('Gemini API key not configured');
     }
 
-    const prompt = this.buildMultiMockPrompt(requests, options);
+    const prompt = this.resolveMultiMockPrompt(requests, options);
     const url = `${this.baseUrl}/models/${this.model}:generateContent`;
     const isThinkingModel = this.model.includes('thinking');
 

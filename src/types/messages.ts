@@ -77,6 +77,21 @@ export type PanelToBackgroundMessage =
       stats: { calls?: number; tokens?: number; mocks?: number; provider?: string };
     }
   | { type: 'RESET_AI_USAGE_STATS' }
+  // AI mock generation
+  | {
+      type: 'PREVIEW_AI_MOCK_PROMPT';
+      request?: import('../services/providers/index').MockRequest;
+      requests?: import('../services/providers/index').MockRequest[];
+      options?: import('../services/providers/index').MockOptions;
+      multi?: boolean;
+    }
+  | {
+      type: 'GENERATE_AI_MOCK';
+      request?: import('../services/providers/index').MockRequest;
+      requests?: import('../services/providers/index').MockRequest[];
+      options?: import('../services/providers/index').MockOptions;
+      multi?: boolean;
+    }
   // Performance metrics
   | { type: 'GET_PERFORMANCE_METRICS'; timeRange?: 'all' | '1h' | '24h' | '7d' }
   | { type: 'CLEAR_PERFORMANCE_DATA' }
@@ -155,6 +170,22 @@ export interface MessageResponses {
   UPDATE_AI_SETTINGS: { success: true };
   INCREMENT_AI_STATS: { success: true; aiSettings: AISettings };
   RESET_AI_USAGE_STATS: { success: true; aiSettings: AISettings };
+  PREVIEW_AI_MOCK_PROMPT:
+    | { success: true; prompt: string }
+    | { success: false; error: string };
+  GENERATE_AI_MOCK:
+    | {
+        success: true;
+        data: unknown;
+        mocks?: unknown[];
+        generationTime: number;
+        provider?: string;
+        model?: string;
+        tokensUsed?: number;
+        requestCount?: number;
+        fallback?: boolean;
+      }
+    | { success: false; error: string; generationTime: number };
   GET_PERFORMANCE_METRICS: { success: true; metrics: PerformanceData };
   CLEAR_PERFORMANCE_DATA: { success: true };
   GET_SESSIONS: { success: true; sessions: SessionSummary[] };

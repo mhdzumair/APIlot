@@ -114,6 +114,28 @@ export abstract class BaseProvider {
   // Prompt Building Methods
   // ============================================
 
+  /** Build the user prompt for a single mock (no LLM call). */
+  previewMockPrompt(request: MockRequest, options: MockOptions = {}): string {
+    return this.buildMockPrompt(request, options);
+  }
+
+  /** Build the user prompt for multi-request mocks (no LLM call). */
+  previewMultiMockPrompt(requests: MockRequest[], options: MockOptions = {}): string {
+    return this.buildMultiMockPrompt(requests, options);
+  }
+
+  protected resolveMockPrompt(request: MockRequest, options: MockOptions = {}): string {
+    const custom = options.customPrompt?.trim();
+    if (custom) return custom;
+    return this.buildMockPrompt(request, options);
+  }
+
+  protected resolveMultiMockPrompt(requests: MockRequest[], options: MockOptions = {}): string {
+    const custom = options.customPrompt?.trim();
+    if (custom) return custom;
+    return this.buildMultiMockPrompt(requests, options);
+  }
+
   protected buildMockPrompt(request: MockRequest, options: MockOptions = {}): string {
     const { userContext = '' } = options;
     const responseMode = options.includeExampleResponse === false

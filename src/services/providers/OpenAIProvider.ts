@@ -66,7 +66,7 @@ export class OpenAIProvider extends BaseProvider implements AIProvider {
       throw new Error('OpenAI API key not configured');
     }
 
-    const prompt = this.buildMockPrompt(request, options);
+    const prompt = this.resolveMockPrompt(request, options);
     const systemPrompt =
       'You are an expert at generating realistic mock data for APIs. Generate data that looks real and contextually appropriate. Always return valid JSON only, no explanation or markdown.';
 
@@ -82,7 +82,7 @@ export class OpenAIProvider extends BaseProvider implements AIProvider {
       throw new Error('OpenAI API key not configured');
     }
 
-    const prompt = this.buildMultiMockPrompt(requests, options);
+    const prompt = this.resolveMultiMockPrompt(requests, options);
     const systemPrompt =
       'You are an expert at generating realistic mock data for APIs. Generate consistent, related data across multiple requests. Always return valid JSON only.';
 
