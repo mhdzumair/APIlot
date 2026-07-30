@@ -1,6 +1,9 @@
 import type { LogEntry } from '../types/requests';
 import type { ApiRule } from '../types/rules';
-import { buildAllChromeDeclarativeRedirects } from '../shared/ruleMatch';
+import {
+  buildAllChromeDeclarativeRedirects,
+  buildRedirectCorsTargetRegex,
+} from '../shared/ruleMatch';
 import type { BrowserAdapter, StorageData, TabState } from './types';
 import { broadcastTabMessage } from './broadcastTabMessage';
 import { IconManager } from './iconManager';
@@ -503,6 +506,25 @@ export class ChromeAdapter implements BrowserAdapter {
           console.warn('[APILOT DNR] Max redirect rule count reached');
           break;
         }
+      }
+
+      const corsTargetRegex = buildRedirectCorsTargetRegex(rule);
+      if (corsTargetRegex && nid <= MAX_ID) {
+        addRules.push({
+          id: nid++,
+          priority: 1,
+          action: {
+            type: chrome.declarativeNetRequest.RuleActionType.MODIFY_HEADERS,
+            responseHeaders: [
+              {
+                header: 'Access-Control-Allow-Origin',
+                operation: chrome.declarativeNetRequest.HeaderOperation.SET,
+                value: '*',
+              },
+            ],
+          },
+          condition: { regexFilter: corsTargetRegex },
+        });
       }
 
       if (nid > MAX_ID) break;

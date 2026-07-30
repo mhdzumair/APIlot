@@ -52,4 +52,6 @@ export interface ApiRule {
   redirectPreservePath?: boolean;
   /** Only redirect the filename portion of the path */
   redirectFilenameOnly?: boolean;
+  /** Add permissive CORS headers to the redirected static asset for local testing. */
+  redirectAllowCors?: boolean;
 }

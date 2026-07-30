@@ -65,6 +65,7 @@ interface FormState {
   redirectUrl: string;
   redirectPreservePath: boolean;
   redirectFilenameOnly: boolean;
+  redirectAllowCors: boolean;
 }
 
 function requestTypeShortLabel(rt: RequestType): string {
@@ -150,6 +151,7 @@ const DEFAULT_FORM: FormState = {
   redirectUrl: '',
   redirectPreservePath: false,
   redirectFilenameOnly: false,
+  redirectAllowCors: false,
 };
 
 // ---------------------------------------------------------------------------
@@ -208,6 +210,7 @@ export function RuleEditorDialog({
         redirectUrl: editingRule.redirectUrl ?? '',
         redirectPreservePath: editingRule.redirectPreservePath ?? false,
         redirectFilenameOnly: editingRule.redirectFilenameOnly ?? false,
+        redirectAllowCors: editingRule.redirectAllowCors ?? false,
       };
       if (!isEditing) {
         next.name = next.name.trim() ? next.name.trim() : buildAutoRuleName(next);
@@ -319,6 +322,7 @@ export function RuleEditorDialog({
       }
       ruleData.redirectUrl = form.redirectUrl.trim();
       ruleData.redirectFilenameOnly = form.redirectFilenameOnly;
+      ruleData.redirectAllowCors = form.requestType === 'static' && form.redirectAllowCors;
       // redirectPreservePath and redirectFilenameOnly are mutually exclusive
       ruleData.redirectPreservePath = form.redirectFilenameOnly ? false : form.redirectPreservePath;
     }
@@ -695,6 +699,22 @@ export function RuleEditorDialog({
                     onCheckedChange={(v) => set('redirectPreservePath', v)}
                   />
                   <Label htmlFor="rule-redirect-preserve">Preserve source path</Label>
+                </div>
+              )}
+
+              {isStaticType && (
+                <div className="flex items-start gap-3">
+                  <Switch
+                    id="rule-redirect-allow-cors"
+                    checked={form.redirectAllowCors}
+                    onCheckedChange={(v) => set('redirectAllowCors', v)}
+                  />
+                  <div>
+                    <Label htmlFor="rule-redirect-allow-cors">Allow cross-origin loading</Label>
+                    <p className="text-[11px] text-muted-foreground mt-0.5 leading-relaxed">
+                      Adds <span className="font-mono">Access-Control-Allow-Origin: *</span> to the redirected asset response so it can load inside an iframe during local testing.
+                    </p>
+                  </div>
                 </div>
               )}
             </>

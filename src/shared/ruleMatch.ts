@@ -530,6 +530,43 @@ export function buildChromeDeclarativeRedirect(rule: ApiRule): RedirectAction | 
 }
 
 /**
+ * Regex for the response URL which receives an opted-in CORS header rewrite.
+ * Exact redirects stay exact; redirects whose target path is derived from the
+ * source URL are constrained to their target origin.
+ */
+export function buildRedirectCorsTargetRegex(rule: ApiRule): string | null {
+  if (!rule.redirectAllowCors || rule.requestType !== 'static') return null;
+  const target = (rule.redirectUrl ?? '').trim();
+  if (!target || !isAllowedRedirectUrl(target)) return null;
+
+  let parsed: URL;
+  try {
+    parsed = new URL(target);
+  } catch {
+    return null;
+  }
+
+  const originRe = escapeRegex(parsed.origin);
+  if (rule.redirectFilenameOnly || rule.redirectPreservePath) {
+    return '^' + originRe + '/.*(?:\\?[^#]*)?$';
+  }
+
+  const path = parsed.pathname || '/';
+  return '^' + originRe + escapeRegex(path) + '(?:\\?[^#]*)?$';
+}
+
+/** True when a response belongs to an opted-in static redirect target. */
+export function matchesRedirectCorsTarget(rule: ApiRule, url: string): boolean {
+  const regex = buildRedirectCorsTargetRegex(rule);
+  if (!regex) return false;
+  try {
+    return new RegExp(regex).test(url);
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Final redirect URL for webRequest blocking / fetch override.
  * When redirectPreservePath is false, copies the source query onto the target
  * if the target URL has none.

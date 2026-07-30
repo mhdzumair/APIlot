@@ -7,6 +7,7 @@ import {
   extractFirefoxBlockingUrlPatterns,
   getMatchingRules,
   getMatchingStaticRules,
+  matchesRedirectCorsTarget,
   matchesRule,
   matchesStaticAssetRule,
 } from '../shared/ruleMatch';
@@ -84,6 +85,12 @@ export class APITestingCore {
     | ((details: { url: string; method?: string; tabId?: number }) =>
         | Record<string, never>
         | { redirectUrl: string })
+    | null = null;
+  /** Firefox MV2: adds CORS headers to opted-in static redirect targets. */
+  private firefoxCorsHeaderHandler:
+    | ((details: { url: string; responseHeaders?: Array<{ name: string; value?: string }> }) =>
+        | Record<string, never>
+        | { responseHeaders: Array<{ name: string; value?: string }> })
     | null = null;
   private aiMockService: AIMockService;
 
@@ -567,11 +574,19 @@ export class APITestingCore {
             ) => void;
             removeListener: (cb: (d: { url: string; method?: string }) => unknown) => void;
           };
+          onHeadersReceived: {
+            addListener: (
+              cb: (d: { url: string; responseHeaders?: Array<{ name: string; value?: string }> }) => unknown,
+              filter: { urls: string[] },
+              extra?: string[]
+            ) => void;
+            removeListener: (cb: (d: { url: string; responseHeaders?: Array<{ name: string; value?: string }> }) => unknown) => void;
+          };
           handlerBehaviorChanged?: () => void;
         };
       }
     ).webRequest;
-    if (!webRequest?.onBeforeRequest) return;
+    if (!webRequest?.onBeforeRequest || !webRequest.onHeadersReceived) return;
 
     if (this.firefoxBlockingRedirectHandler) {
       try {
@@ -582,6 +597,14 @@ export class APITestingCore {
         /* ignore */
       }
       this.firefoxBlockingRedirectHandler = null;
+    }
+    if (this.firefoxCorsHeaderHandler) {
+      try {
+        webRequest.onHeadersReceived.removeListener(this.firefoxCorsHeaderHandler);
+      } catch {
+        /* ignore */
+      }
+      this.firefoxCorsHeaderHandler = null;
     }
 
     let useAllUrls = false;
@@ -600,28 +623,58 @@ export class APITestingCore {
     }
 
     const urls = useAllUrls ? ['<all_urls>'] : [...patterns];
-    if (urls.length === 0) {
-      console.log(
-        '[APILOT] No blocking redirect patterns (set urlPattern on each redirect rule)'
-      );
-      return;
+    const core = this;
+    if (urls.length > 0) {
+      this.firefoxBlockingRedirectHandler = (d) => core.handleBlockingRedirect(d);
+
+      try {
+        webRequest.onBeforeRequest.addListener(
+          this.firefoxBlockingRedirectHandler,
+          { urls },
+          ['blocking']
+        );
+        console.log('[APILOT] Firefox blocking redirects active:', urls);
+      } catch (e) {
+        console.error('[APILOT] Failed to register blocking redirects:', e);
+      }
     }
 
-    const core = this;
-    this.firefoxBlockingRedirectHandler = (d) => core.handleBlockingRedirect(d);
-
-    try {
-      webRequest.onBeforeRequest.addListener(
-        this.firefoxBlockingRedirectHandler,
-        { urls },
-        ['blocking']
-      );
+    const corsRules = [...this.rules.values()].filter(
+      (rule) =>
+        rule.enabled &&
+        rule.requestType === 'static' &&
+        rule.action === 'redirect' &&
+        rule.redirectAllowCors
+    );
+    if (corsRules.length > 0) {
+      this.firefoxCorsHeaderHandler = (details) => {
+        if (!corsRules.some((rule) => matchesRedirectCorsTarget(rule, details.url))) {
+          return {} as Record<string, never>;
+        }
+        const headers = (details.responseHeaders ?? []).filter(
+          (header) => header.name.toLowerCase() !== 'access-control-allow-origin'
+        );
+        headers.push({ name: 'Access-Control-Allow-Origin', value: '*' });
+        return { responseHeaders: headers };
+      };
       if (typeof webRequest.handlerBehaviorChanged === 'function') {
-        webRequest.handlerBehaviorChanged();
+        void webRequest.handlerBehaviorChanged();
       }
-      console.log('[APILOT] Firefox blocking redirects active:', urls);
-    } catch (e) {
-      console.error('[APILOT] Failed to register blocking redirects:', e);
+      try {
+        const handler = this.firefoxCorsHeaderHandler;
+        if (!handler) return;
+        webRequest.onHeadersReceived.addListener(
+          handler,
+          { urls: ['<all_urls>'] },
+          ['blocking', 'responseHeaders']
+        );
+        console.log('[APILOT] Firefox CORS redirect headers active:', corsRules.length);
+      } catch (e) {
+        console.error('[APILOT] Failed to register Firefox CORS redirect headers:', e);
+      }
+    }
+    if (typeof webRequest.handlerBehaviorChanged === 'function') {
+      void webRequest.handlerBehaviorChanged();
     }
   }
 
