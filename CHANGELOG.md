@@ -4,6 +4,20 @@ All notable changes to **APIlot** are documented in this file. It also includes 
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [2.3.2] — 2026-09-17
+
+### Security
+
+- **Redirect proxy confused deputy (SSRF)** — The content script relayed any page-posted `PROXY_REDIRECT_REQUEST` `window.postMessage` straight into a background fetch that runs with `<all_urls>` host permission (bypassing CORS), using the page-supplied URL/method/headers/body verbatim and without checking that monitoring was even enabled. Since the content script listens on the page's own `window`, any website could post that message itself and use the extension to fetch and read back arbitrary cross-origin responses. The content script now computes the redirect target itself from a real, rule-matched request and only proxies to that extension-computed URL, gated on monitoring being enabled and a short-lived, one-shot match — the page's claimed URL is no longer trusted. Reported by Shubham Agarwal (MPI-SP / Saarland University).
+
+### Added
+
+- **HAR import** — Monitor tab can now import a HAR 1.2 document (from DevTools, other tools, or our own export) back into the request log, complementing the existing HAR export.
+
+### Changed
+
+- **Panel UI refresh** — New icon set, new CSS theme tokens, and a restyle of panel chrome (header, tab bar, toolbars, segmented controls, cards) across Monitor, Rules, Schema Explorer, Query Builder, and Settings.
+
 ## [2.3.1] — 2026-04-10
 
 ### Security
