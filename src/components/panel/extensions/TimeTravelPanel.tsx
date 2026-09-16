@@ -2,12 +2,9 @@ import * as React from 'react';
 import { useEffect, useCallback, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 import { sendMsg } from '@/lib/messaging';
-import { browser } from '@/lib/browser';
 import { useSessionStore } from '@/stores/useSessionStore';
-import type { SessionSummary, Session, SessionExport } from '@/types/sessions';
+import type { SessionSummary, SessionExport } from '@/types/sessions';
 
 function formatDuration(ms: number | undefined): string {
   if (ms == null) return '—';

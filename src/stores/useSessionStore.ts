@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { Session, SessionSummary, PlaybackState, PlaybackStatus } from '../types/sessions';
+import type { Session, SessionSummary, PlaybackStatus } from '../types/sessions';
 
 interface SessionState {
   sessions: SessionSummary[];

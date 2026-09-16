@@ -995,7 +995,7 @@ export class APITestingCore {
           }
         } catch (e) {
           if (e instanceof Error && e.message.includes('disallowed redirect scheme')) throw e;
-          throw new Error(`Rule at index ${index} has invalid redirectUrl: ${rule.redirectUrl}`);
+          throw new Error(`Rule at index ${index} has invalid redirectUrl: ${rule.redirectUrl}`, { cause: e });
         }
       }
       this.addRule(rule);

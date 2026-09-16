@@ -145,7 +145,7 @@ export function QueryBuilderTab() {
       }
     }
     return hints;
-  }, [requestLog]);
+  }, [requestLog, selectedOperation]);
 
   // ------------------------------------------------------------------
   // Regenerate query whenever state changes

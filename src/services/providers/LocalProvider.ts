@@ -57,7 +57,7 @@ export class LocalProvider extends BaseProvider implements AIProvider {
     return true;
   }
 
-  async generateMock(request: MockRequest, options: MockOptions = {}): Promise<MockResult> {
+  async generateMock(request: MockRequest, _options: MockOptions = {}): Promise<MockResult> {
     if (request.requestType === 'graphql') {
       return this.generateGraphQLMocks(request);
     } else {

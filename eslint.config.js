@@ -55,7 +55,7 @@ export default [
     },
     rules: {
       // TypeScript
-      '@typescript-eslint/no-unused-vars': ['warn', { argsIgnorePattern: '^_' }],
+      '@typescript-eslint/no-unused-vars': ['warn', { argsIgnorePattern: '^_', varsIgnorePattern: '^_', caughtErrorsIgnorePattern: '^_' }],
       '@typescript-eslint/no-explicit-any': 'warn',
 
       // React
@@ -73,7 +73,7 @@ export default [
       'jsx-a11y/aria-unsupported-elements': 'error',
       'jsx-a11y/click-events-have-key-events': 'warn',
       'jsx-a11y/interactive-supports-focus': 'warn',
-      'jsx-a11y/label-has-associated-control': 'error',
+      'jsx-a11y/label-has-associated-control': ['error', { controlComponents: ['Input'] }],
       'jsx-a11y/no-noninteractive-element-interactions': 'warn',
       'jsx-a11y/no-static-element-interactions': 'warn',
       'jsx-a11y/role-has-required-aria-props': 'error',

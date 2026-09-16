@@ -16,6 +16,7 @@ export function SchemaSearch({ value, onChange, placeholder = 'Search…' }: Sch
       <Input
         className="h-8 text-xs rounded-[9px] pl-7"
         placeholder={placeholder}
+        aria-label={placeholder}
         value={value}
         onChange={(e) => onChange(e.target.value)}
       />

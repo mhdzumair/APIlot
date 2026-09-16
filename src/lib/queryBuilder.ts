@@ -1,20 +1,6 @@
 import type { SchemaField } from '@/stores/useSchemaStore';
 
 // ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-function getBaseTypeName(field: SchemaField): string {
-  // SchemaField.type is already a string like "String", "User", "[User!]!", etc.
-  // Strip list wrappers and non-null bangs to get the bare type name.
-  return field.type.replace(/[[\]!]/g, '').trim();
-}
-
-function getTypeString(field: SchemaField): string {
-  return field.type;
-}
-
-// ---------------------------------------------------------------------------
 // Tree building from dot-separated paths
 // ---------------------------------------------------------------------------
 

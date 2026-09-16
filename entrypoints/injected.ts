@@ -4,25 +4,91 @@ export default defineUnlistedScript(() => {
   // ZERO browser extension API imports allowed.
   'use strict';
 
-  // Prevent multiple injections from interfering with each other
-  if ((window as any).__APILOT_INJECTED__) {
-    console.log('🔄 [APILOT] Script already injected in this context, skipping');
-    return;
+  // ---------------------------------------------------------------------------
+  // Local types
+  // ---------------------------------------------------------------------------
+
+  /** Marker property this script sets on `window` to avoid double-injection. */
+  interface ApilotWindow extends Window {
+    __APILOT_INJECTED__?: boolean;
+    __APILOT_ACTIVE_FRAME__?: string;
   }
-  (window as any).__APILOT_INJECTED__ = true;
 
-  const originalFetch = window.fetch;
-  const pendingRequests = new Map<string, any>();
-  /** Must stay false until content script sends START_API_MONITORING (see interceptor). */
-  let isMonitoringEnabled = false;
+  /** Custom bookkeeping fields we stash on intercepted XHR instances. */
+  interface ApilotXHR extends XMLHttpRequest {
+    _apilot_method?: string;
+    _apilot_url?: string;
+    _apilot_headers?: Record<string, string>;
+    _apilot_requestId?: string;
+    _apilot_requestType?: string;
+    _apilot_responseCaptured?: boolean;
+  }
 
-  /** Synced from extension settings. If useFilters is false, all HTTP(S) fetch/XHR is captured (except GraphQL + special URLs). */
-  let networkCaptureSettings: {
+  type FetchArgs = [URL | RequestInfo, RequestInit?];
+
+  interface PendingRequest {
+    resolve: (value: Response) => void;
+    reject: (reason?: unknown) => void;
+    originalArgs: FetchArgs;
+    requestType: string;
+    startTime: number;
+  }
+
+  /** Plain-object stand-in for RequestInit used for XHR-derived "requests". */
+  interface RequestOptionsLike {
+    method?: string;
+    body?: unknown;
+    headers?: Record<string, string> | Headers;
+  }
+
+  /** Shape of window.postMessage envelopes exchanged with the content script. */
+  interface WindowMessage {
+    type: string;
+    payload?: Record<string, unknown>;
+  }
+
+  type RuleAction = 'mock' | 'delay' | 'block' | 'modify' | 'passthrough' | 'redirect';
+
+  interface ApilotRule {
+    action?: RuleAction;
+    name?: string;
+    delay?: number;
+    statusCode?: number;
+    responseHeaders?: Record<string, string>;
+    mockResponse?: unknown;
+    modifications?: {
+      variables?: Record<string, unknown>;
+      query?: string;
+      operationName?: string;
+      body?: Record<string, unknown>;
+    };
+    redirectUrl?: string;
+    redirectFilenameOnly?: boolean;
+    redirectPreservePath?: boolean;
+  }
+
+  interface NetworkCaptureSettings {
     useFilters: boolean;
     includeSubstrings: string[];
     excludeSubstrings: string[];
     skipStaticExtensions: boolean;
-  } = {
+  }
+
+  // Prevent multiple injections from interfering with each other
+  const apilotWindow = window as ApilotWindow;
+  if (apilotWindow.__APILOT_INJECTED__) {
+    console.log('🔄 [APILOT] Script already injected in this context, skipping');
+    return;
+  }
+  apilotWindow.__APILOT_INJECTED__ = true;
+
+  const originalFetch = window.fetch;
+  const pendingRequests = new Map<string, PendingRequest>();
+  /** Must stay false until content script sends START_API_MONITORING (see interceptor). */
+  let isMonitoringEnabled = false;
+
+  /** Synced from extension settings. If useFilters is false, all HTTP(S) fetch/XHR is captured (except GraphQL + special URLs). */
+  let networkCaptureSettings: NetworkCaptureSettings = {
     useFilters: false,
     includeSubstrings: [],
     excludeSubstrings: [],
@@ -44,13 +110,14 @@ export default defineUnlistedScript(() => {
   }
 
   window.addEventListener('message', (event) => {
-    if (event.source !== window || (event.data as any)?.type !== 'APILOT_SET_NETWORK_CAPTURE') return;
+    const data = event.data as WindowMessage | undefined;
+    if (event.source !== window || data?.type !== 'APILOT_SET_NETWORK_CAPTURE') return;
     networkCaptureSettings = {
       useFilters: false,
       includeSubstrings: [],
       excludeSubstrings: [],
       skipStaticExtensions: false,
-      ...((event.data as any).payload || {}),
+      ...(data.payload as Partial<NetworkCaptureSettings> | undefined || {}),
     };
   });
 
@@ -65,7 +132,7 @@ export default defineUnlistedScript(() => {
       isTopFrame: window === window.top,
       isIframe: window !== window.top,
       frameUrl: window.location.href,
-      frameName: (window as any).name || null,
+      frameName: window.name || null,
       parentOrigin:
         window !== window.top
           ? document.referrer
@@ -96,7 +163,7 @@ export default defineUnlistedScript(() => {
   async function captureResponse(requestId: string, response: Response, requestType = 'graphql') {
     try {
       const contentLengthHeader = response.headers.get('content-length');
-      let responseData: any = null;
+      let responseData: unknown = null;
       let responseText = '';
 
       // Skip reading the body for binary/media responses — just record metadata
@@ -128,16 +195,17 @@ export default defineUnlistedScript(() => {
       };
 
       window.postMessage({ type: 'API_RESPONSE_CAPTURED', payload }, pageOrigin());
-    } catch (error: any) {
-      console.error(`❌ [APILOT] Failed to capture response for ${requestId}:`, error.message);
+    } catch (error) {
+      const err = error instanceof Error ? error : new Error(String(error));
+      console.error(`❌ [APILOT] Failed to capture response for ${requestId}:`, err.message);
 
       const errorPayload = {
         requestId,
         requestType,
         response: null,
-        error: `${error.name}: ${error.message}`,
-        status: (response as any)?.status || 0,
-        statusText: (response as any)?.statusText || 'Unknown',
+        error: `${err.name}: ${err.message}`,
+        status: response?.status || 0,
+        statusText: response?.statusText || 'Unknown',
         timestamp: new Date().toISOString(),
       };
 
@@ -147,7 +215,7 @@ export default defineUnlistedScript(() => {
   }
 
   // Check if a request contains GraphQL
-  function isGraphQLRequest(url: any, options: any): boolean {
+  function isGraphQLRequest(url: string, options: RequestOptionsLike | undefined): boolean {
     const actualUrl = url;
     const actualOptions = options || {};
 
@@ -170,7 +238,7 @@ export default defineUnlistedScript(() => {
         const parsed = JSON.parse(actualOptions.body);
         hasGraphQLContent = !!(parsed.query || parsed.operationName || parsed.variables);
       }
-    } catch (e) {
+    } catch (_e) {
       // Not JSON, might still be GraphQL
       if (actualOptions.body && typeof actualOptions.body === 'string') {
         hasGraphQLContent =
@@ -181,8 +249,8 @@ export default defineUnlistedScript(() => {
     }
 
     // Check Content-Type header for GraphQL
-    const contentType =
-      actualOptions.headers?.['content-type'] || actualOptions.headers?.['Content-Type'] || '';
+    const headers = actualOptions.headers as Record<string, string> | undefined;
+    const contentType = headers?.['content-type'] || headers?.['Content-Type'] || '';
     const hasGraphQLContentType =
       contentType.includes('application/json') || contentType.includes('application/graphql');
 
@@ -198,7 +266,7 @@ export default defineUnlistedScript(() => {
    * Whether to wrap this fetch/XHR as a captured "rest" request.
    * No URL filtering unless Settings → Background network capture → Apply URL filters is enabled.
    */
-  function shouldInterceptAsRest(url: any, options: any): boolean {
+  function shouldInterceptAsRest(url: string, options: RequestOptionsLike | undefined): boolean {
     if (isGraphQLRequest(url, options)) {
       return false;
     }
@@ -234,7 +302,7 @@ export default defineUnlistedScript(() => {
     if (actualUrl && !actualUrl.startsWith('http') && !actualUrl.startsWith('//')) {
       try {
         policyUrl = new URL(actualUrl, window.location.href).href;
-      } catch (e) {
+      } catch (_e) {
         policyUrl = actualUrl;
       }
     }
@@ -271,7 +339,7 @@ export default defineUnlistedScript(() => {
   }
 
   // Detect request type
-  function detectRequestType(url: any, options: any): string | null {
+  function detectRequestType(url: string, options: RequestOptionsLike | undefined): string | null {
     if (isGraphQLRequest(url, options)) {
       return 'graphql';
     }
@@ -282,9 +350,9 @@ export default defineUnlistedScript(() => {
   }
 
   // Parse GraphQL request data
-  function parseGraphQLRequest(body: any) {
+  function parseGraphQLRequest(body: unknown) {
     try {
-      const parsed = JSON.parse(body);
+      const parsed = JSON.parse(body as string);
       let operationName = parsed.operationName || '';
 
       // If no operationName provided, try to extract from query
@@ -308,7 +376,7 @@ export default defineUnlistedScript(() => {
         operationName: operationName,
         variables: parsed.variables || {},
       };
-    } catch (e) {
+    } catch (_e) {
       return {
         query: body,
         operationName: 'UnnamedQuery',
@@ -318,16 +386,16 @@ export default defineUnlistedScript(() => {
   }
 
   // Parse REST request data
-  function parseRESTRequest(url: string, options: any) {
+  function parseRESTRequest(url: string, options: RequestOptionsLike | undefined) {
     const method = options?.method?.toUpperCase() || 'GET';
     let body = null;
 
     try {
-      if (options.body && typeof options.body === 'string') {
+      if (options?.body && typeof options.body === 'string') {
         body = JSON.parse(options.body);
       }
-    } catch (e) {
-      body = options.body || null;
+    } catch (_e) {
+      body = options?.body || null;
     }
 
     // Extract endpoint name from URL
@@ -371,43 +439,44 @@ export default defineUnlistedScript(() => {
   }
 
   // Override fetch
-  (window as any).fetch = async function (url: any, options: any = {}) {
+  window.fetch = async function (url: URL | RequestInfo, options: RequestInit = {}) {
     // Skip monitoring for extension's own requests
     const runtime =
-      typeof (globalThis as any).chrome !== 'undefined'
-        ? (globalThis as any).chrome.runtime
-        : typeof (globalThis as any).browser !== 'undefined'
-          ? (globalThis as any).browser.runtime
+      typeof (globalThis as { chrome?: { runtime?: { getURL?: (path: string) => string } } }).chrome !== 'undefined'
+        ? (globalThis as unknown as { chrome: { runtime: { getURL: (path: string) => string } } }).chrome.runtime
+        : typeof (globalThis as { browser?: { runtime?: { getURL?: (path: string) => string } } }).browser !== 'undefined'
+          ? (globalThis as unknown as { browser: { runtime: { getURL: (path: string) => string } } }).browser.runtime
           : null;
     if (runtime && runtime.getURL) {
       try {
         const extensionUrl = runtime.getURL('');
-        if (url && url.startsWith(extensionUrl)) {
+        if (typeof url === 'string' && url.startsWith(extensionUrl)) {
           console.log('🔧 [APILOT] Skipping extension internal request:', url);
-          return originalFetch.call(this, url, options);
+          return originalFetch.call(window, url, options);
         }
-      } catch (e) {
+      } catch (_e) {
         // Ignore errors accessing extension API from content context
       }
     }
 
     // Handle Request object properly
-    let actualUrl = url;
-    let actualOptions = options;
+    let actualUrl: string;
+    let actualOptions: RequestOptionsLike & { body?: BodyInit | null };
     let requestBody: BodyInit | null | undefined;
 
     if (url instanceof Request) {
       actualUrl = url.url;
+      const requestHeadersObj: Record<string, string> = {};
       actualOptions = {
         method: url.method,
-        headers: {} as Record<string, string>,
-        body: null as any,
+        headers: requestHeadersObj,
+        body: null,
       };
 
       // Extract headers from Request object
       if (url.headers) {
-        for (const [key, value] of (url.headers as any).entries()) {
-          actualOptions.headers[key] = value;
+        for (const [key, value] of url.headers.entries()) {
+          requestHeadersObj[key] = value;
         }
       }
 
@@ -426,8 +495,13 @@ export default defineUnlistedScript(() => {
         requestBody = null;
       }
     } else {
+      actualUrl = typeof url === 'string' ? url : String(url);
       requestBody = options.body;
-      actualOptions.body = requestBody;
+      actualOptions = {
+        method: options.method,
+        headers: options.headers as Record<string, string> | Headers | undefined,
+        body: requestBody,
+      };
     }
 
     // Convert relative URLs to absolute URLs
@@ -450,7 +524,7 @@ export default defineUnlistedScript(() => {
       const requestHeaders: Record<string, string> = {};
       if (actualOptions.headers) {
         if (actualOptions.headers instanceof Headers) {
-          for (const [key, value] of (actualOptions.headers as any).entries()) {
+          for (const [key, value] of actualOptions.headers.entries()) {
             requestHeaders[key] = value;
           }
         } else if (typeof actualOptions.headers === 'object') {
@@ -458,7 +532,7 @@ export default defineUnlistedScript(() => {
         }
       }
 
-      let payload: any;
+      let payload: Record<string, unknown>;
 
       // Get frame context for grouping
       const frameContext = getFrameContext();
@@ -494,13 +568,13 @@ export default defineUnlistedScript(() => {
         };
       }
 
-      diagLog('log', `INTERCEPT ${requestType} ${(payload as any).method ?? 'GET'} ${resolvedUrl}`);
+      diagLog('log', `INTERCEPT ${requestType} ${(payload.method as string | undefined) ?? 'GET'} ${resolvedUrl}`);
 
       // Notify content script about detected request
       window.postMessage({ type: 'API_REQUEST_DETECTED', payload }, pageOrigin());
 
       // Create a promise for rule handling
-      const interceptPromise = new Promise((resolve, reject) => {
+      const interceptPromise = new Promise<Response>((resolve, reject) => {
         pendingRequests.set(requestId, {
           resolve,
           reject,
@@ -536,28 +610,29 @@ export default defineUnlistedScript(() => {
     }
 
     // Not a monitored request, proceed normally
-    return originalFetch.call(this, url, options);
+    return originalFetch.call(window, url, options);
   };
 
   // Listen for messages from content script
   window.addEventListener('message', async (event) => {
-    if (event.source !== window || !(event.data as any).type) return;
+    const data = event.data as WindowMessage | undefined;
+    if (event.source !== window || !data?.type) return;
 
     // Handle monitoring control messages
-    if ((event.data as any).type === 'START_API_MONITORING') {
+    if (data.type === 'START_API_MONITORING') {
       console.log('🟢 [APILOT] Resuming API monitoring');
       isMonitoringEnabled = true;
       return;
     }
 
-    if ((event.data as any).type === 'STOP_API_MONITORING') {
+    if (data.type === 'STOP_API_MONITORING') {
       console.log('🔴 [APILOT] Stopping API monitoring');
       isMonitoringEnabled = false;
       return;
     }
 
     // Legacy support for GraphQL-specific stop message
-    if ((event.data as any).type === 'STOP_GRAPHQL_MONITORING') {
+    if (data.type === 'STOP_GRAPHQL_MONITORING') {
       console.log('🔴 [APILOT] Stopping API monitoring (legacy)');
       isMonitoringEnabled = false;
       return;
@@ -572,33 +647,34 @@ export default defineUnlistedScript(() => {
       'APPLY_GRAPHQL_RULE',
       'APPLY_GRAPHQL_RULES',
     ];
-    if (!validIncomingTypes.includes((event.data as any).type)) {
+    if (!validIncomingTypes.includes(data.type)) {
       return;
     }
 
-    console.log(`🔄 [APILOT] Received message:`, (event.data as any).type, (event.data as any).payload);
+    console.log(`🔄 [APILOT] Received message:`, data.type, data.payload);
 
-    const { requestId } = (event.data as any).payload || {};
+    const requestId = data.payload?.requestId as string | undefined;
     if (!requestId) {
-      console.warn(`⚠️ [APILOT] No requestId in message:`, event.data);
+      console.warn(`⚠️ [APILOT] No requestId in message:`, data);
       return;
     }
 
-    if (!pendingRequests.has(requestId)) {
+    const pending = pendingRequests.get(requestId);
+    if (!pending) {
       console.warn(`⚠️ [APILOT] Request ${requestId} not found in pending requests`);
       return;
     }
 
-    const { resolve, reject, originalArgs, requestType } = pendingRequests.get(requestId);
+    const { resolve, reject, originalArgs, requestType } = pending;
     pendingRequests.delete(requestId);
 
     try {
-      switch ((event.data as any).type) {
+      switch (data.type) {
         case 'API_REQUEST_PROCEED':
         case 'GRAPHQL_REQUEST_PROCEED': {
-          const args = (event.data as any).payload.modifiedArgs || originalArgs;
+          const args = (data.payload?.modifiedArgs as FetchArgs | undefined) || originalArgs;
           diagLog('log', `PROCEED ${requestType} id=${requestId}`);
-          const response = await originalFetch.apply(window, args as [RequestInfo, RequestInit?]);
+          const response = await originalFetch.apply(window, args);
           diagLog('log', `RESPONSE ${requestType} id=${requestId} status=${response.status} ct=${response.headers.get('content-type') ?? '-'}`);
           resolve(response);
           captureResponse(requestId, response.clone(), requestType).catch(console.error);
@@ -607,20 +683,20 @@ export default defineUnlistedScript(() => {
 
         case 'APPLY_API_RULE':
         case 'APPLY_GRAPHQL_RULE': {
-          const rule = (event.data as any).payload.rule;
+          const rule = data.payload?.rule as ApilotRule;
           await applyRule(rule, resolve, reject, originalArgs, requestId, requestType);
           break;
         }
 
         case 'APPLY_API_RULES':
         case 'APPLY_GRAPHQL_RULES': {
-          const rules = (event.data as any).payload.rules;
+          const rules = data.payload?.rules as ApilotRule[];
           await applyMultipleRules(rules, resolve, reject, originalArgs, requestId, requestType);
           break;
         }
 
         default: {
-          const defaultResponse = await originalFetch.apply(window, originalArgs as [RequestInfo, RequestInit?]);
+          const defaultResponse = await originalFetch.apply(window, originalArgs);
           resolve(defaultResponse);
           captureResponse(requestId, defaultResponse.clone(), requestType).catch(console.error);
         }
@@ -628,16 +704,16 @@ export default defineUnlistedScript(() => {
     } catch (error) {
       console.error('❌ [APILOT] Error handling intercepted request:', error);
       try {
-        const fallbackResponse = await originalFetch.apply(window, originalArgs as [RequestInfo, RequestInit?]);
+        const fallbackResponse = await originalFetch.apply(window, originalArgs);
         resolve(fallbackResponse);
         captureResponse(requestId, fallbackResponse.clone(), requestType).catch(console.error);
-      } catch (fallbackError) {
+      } catch (_fallbackError) {
         reject(error);
       }
     }
   });
 
-  function resolveArgUrlToString(url: any, options: any): string {
+  function resolveArgUrlToString(url: URL | RequestInfo, _options?: RequestInit): string {
     if (url instanceof Request) {
       return url.url;
     }
@@ -648,7 +724,7 @@ export default defineUnlistedScript(() => {
         }
         try {
           return new URL(url, window.location.href).href;
-        } catch (e) {
+        } catch (_e) {
           return url;
         }
       }
@@ -657,7 +733,7 @@ export default defineUnlistedScript(() => {
     return String(url || '');
   }
 
-  function buildRedirectTargetUrl(rule: any, sourceAbsoluteUrl: string): string | null {
+  function buildRedirectTargetUrl(rule: ApilotRule, sourceAbsoluteUrl: string): string | null {
     const base = (rule.redirectUrl || '').trim();
     if (!base) return null;
     try {
@@ -689,7 +765,7 @@ export default defineUnlistedScript(() => {
       }
       if (src.hash && !out.includes('#')) out += src.hash;
       return out;
-    } catch (e) {
+    } catch (_e) {
       return base;
     }
   }
@@ -709,11 +785,18 @@ export default defineUnlistedScript(() => {
 
       function listener(event: MessageEvent) {
         if (event.source !== window) return;
-        const d = (event.data as any);
+        const d = event.data as WindowMessage | undefined;
         if (d?.type !== 'PROXY_REDIRECT_RESPONSE' || d?.payload?.requestId !== proxyId) return;
         clearTimeout(timeout);
         window.removeEventListener('message', listener);
-        const p = d.payload;
+        const p = d.payload as {
+          success: boolean;
+          error?: string;
+          body?: string;
+          status?: number;
+          statusText?: string;
+          headers?: Record<string, string>;
+        };
         if (!p.success) {
           reject(new TypeError(p.error || 'Proxy fetch failed'));
           return;
@@ -734,7 +817,7 @@ export default defineUnlistedScript(() => {
   }
 
   /** Build [url, init] for fetch after a redirect rule (handles string URL or Request). */
-  function buildFetchArgsAfterRedirect(rule: any, originalArgs: any[], resolvedSourceUrl: string): any[] {
+  function buildFetchArgsAfterRedirect(rule: ApilotRule, originalArgs: FetchArgs, resolvedSourceUrl: string): FetchArgs {
     const targetUrl = buildRedirectTargetUrl(rule, resolvedSourceUrl);
     if (!targetUrl) {
       return originalArgs;
@@ -743,7 +826,7 @@ export default defineUnlistedScript(() => {
 
     if (url instanceof Request) {
       const req = url;
-      const nextOpts = {
+      const nextOpts: RequestInit = {
         method: req.method,
         headers: new Headers(req.headers),
         body: options.body != null ? options.body : null,
@@ -760,17 +843,17 @@ export default defineUnlistedScript(() => {
       return [targetUrl, nextOpts];
     }
 
-    const nextOpts =
+    const nextOpts: RequestInit =
       typeof options === 'object' && options !== null ? { ...options } : {};
     return [targetUrl, nextOpts];
   }
 
   // Apply multiple rules to request
   async function applyMultipleRules(
-    rules: any[],
-    resolve: (value: any) => void,
-    reject: (reason?: any) => void,
-    originalArgs: any[],
+    rules: ApilotRule[],
+    resolve: (value: Response) => void,
+    reject: (reason?: unknown) => void,
+    originalArgs: FetchArgs,
     requestId: string,
     requestType: string,
   ) {
@@ -778,7 +861,7 @@ export default defineUnlistedScript(() => {
 
     try {
       // Check for block rules first
-      const blockRule = rules.find((rule: any) => rule.action === 'block');
+      const blockRule = rules.find((rule) => rule.action === 'block');
       if (blockRule) {
         console.log(`🚫 [APILOT] Blocking request ${requestId} due to rule: ${blockRule.name}`);
 
@@ -798,9 +881,9 @@ export default defineUnlistedScript(() => {
         return;
       }
 
-      let argsForFetch = originalArgs;
+      let argsForFetch: FetchArgs = originalArgs;
       let redirectTargetUrl: string | null = null;
-      const redirectRule = rules.find((rule: any) => rule.action === 'redirect');
+      const redirectRule = rules.find((rule) => rule.action === 'redirect');
       if (redirectRule) {
         const resolvedSource = resolveArgUrlToString(originalArgs[0], originalArgs[1]);
         const targetUrl = buildRedirectTargetUrl(redirectRule, resolvedSource);
@@ -812,13 +895,13 @@ export default defineUnlistedScript(() => {
       }
 
       // Separate rules by type
-      const delayRules = rules.filter((rule: any) => rule.action === 'delay');
-      const modifyRules = rules.filter((rule: any) => rule.action === 'modify');
-      const mockRules = rules.filter((rule: any) => rule.action === 'mock');
+      const delayRules = rules.filter((rule) => rule.action === 'delay');
+      const modifyRules = rules.filter((rule) => rule.action === 'modify');
+      const mockRules = rules.filter((rule) => rule.action === 'mock');
 
       // Apply all delay rules (sum delays)
       const totalDelay = delayRules.reduce(
-        (sum: number, rule: any) => sum + (rule.delay || 1000),
+        (sum: number, rule) => sum + (rule.delay || 1000),
         0,
       );
       if (totalDelay > 0) {
@@ -846,12 +929,12 @@ export default defineUnlistedScript(() => {
       }
 
       // Apply all modify rules
-      let finalArgs = argsForFetch;
+      let finalArgs: FetchArgs = argsForFetch;
       if (modifyRules.length > 0) {
         console.log(`🔧 [APILOT] Applying modifications from ${modifyRules.length} rule(s)`);
 
         const combinedModifications = modifyRules.reduce(
-          (combined: any, rule: any) => {
+          (combined: { variables: Record<string, unknown>; query?: string; operationName?: string; body: Record<string, unknown> }, rule) => {
             if (rule.modifications) {
               if (rule.modifications.variables) {
                 combined.variables = { ...combined.variables, ...rule.modifications.variables };
@@ -872,11 +955,11 @@ export default defineUnlistedScript(() => {
         );
 
         const [url, options] = argsForFetch;
-        const modifiedOptions = { ...options };
+        const modifiedOptions: RequestInit = { ...options };
 
-        if (options.body) {
+        if (options?.body) {
           try {
-            const bodyData = JSON.parse(options.body);
+            const bodyData = JSON.parse(options.body as string);
 
             if (requestType === 'graphql') {
               if (Object.keys(combinedModifications.variables).length > 0) {
@@ -908,7 +991,7 @@ export default defineUnlistedScript(() => {
       // Execute the request — use background proxy for redirect in iframes to avoid CORS
       let response: Response;
       if (redirectTargetUrl && getFrameContext().isIframe) {
-        const [, opts = {}] = finalArgs as [unknown, RequestInit?];
+        const [, opts = {}] = finalArgs;
         const method = (opts?.method || 'GET').toString().toUpperCase();
         const hdrs: Record<string, string> = {};
         if (opts?.headers) {
@@ -917,7 +1000,7 @@ export default defineUnlistedScript(() => {
         const bodyStr = opts?.body != null ? String(opts.body) : undefined;
         response = await proxyFetchThroughBackground(redirectTargetUrl, method, hdrs, bodyStr);
       } else {
-        response = await originalFetch.apply(window, finalArgs as [RequestInfo, RequestInit?]);
+        response = await originalFetch.apply(window, finalArgs);
       }
       resolve(response);
       captureResponse(requestId, response.clone(), requestType).catch(console.error);
@@ -929,10 +1012,10 @@ export default defineUnlistedScript(() => {
 
   // Apply single rule to request
   async function applyRule(
-    rule: any,
-    resolve: (value: any) => void,
-    reject: (reason?: any) => void,
-    originalArgs: any[],
+    rule: ApilotRule,
+    resolve: (value: Response) => void,
+    reject: (reason?: unknown) => void,
+    originalArgs: FetchArgs,
     requestId: string,
     requestType: string,
   ) {
@@ -943,7 +1026,7 @@ export default defineUnlistedScript(() => {
           await new Promise((delayResolve) =>
             setTimeout(delayResolve, rule.delay || 1000),
           );
-          const delayedResponse = await originalFetch.apply(window, originalArgs as [RequestInfo, RequestInit?]);
+          const delayedResponse = await originalFetch.apply(window, originalArgs);
           resolve(delayedResponse);
           captureResponse(requestId, delayedResponse.clone(), requestType).catch(console.error);
           break;
@@ -967,11 +1050,11 @@ export default defineUnlistedScript(() => {
 
         case 'modify': {
           const [url, options] = originalArgs;
-          const modifiedOptions = { ...options };
+          const modifiedOptions: RequestInit = { ...options };
 
-          if (rule.modifications && options.body) {
+          if (rule.modifications && options?.body) {
             try {
-              const bodyData = JSON.parse(options.body);
+              const bodyData = JSON.parse(options.body as string);
 
               if (requestType === 'graphql') {
                 if (rule.modifications.variables) {
@@ -1025,7 +1108,7 @@ export default defineUnlistedScript(() => {
           const resolvedSource = resolveArgUrlToString(originalArgs[0], originalArgs[1]);
           const targetUrl = buildRedirectTargetUrl(rule, resolvedSource);
           if (!targetUrl) {
-            const fallbackResponse = await originalFetch.apply(window, originalArgs as [RequestInfo, RequestInit?]);
+            const fallbackResponse = await originalFetch.apply(window, originalArgs);
             resolve(fallbackResponse);
             captureResponse(requestId, fallbackResponse.clone(), requestType).catch(console.error);
             break;
@@ -1039,7 +1122,7 @@ export default defineUnlistedScript(() => {
             // Inside an iframe the fetch carries the iframe's origin which may be
             // rejected by the redirect target's CORS policy. Route through the
             // background script which has <all_urls> and is not CORS-restricted.
-            const [, opts = {}] = nextArgs as [unknown, RequestInit?];
+            const [, opts = {}] = nextArgs;
             const method = (opts?.method || 'GET').toString().toUpperCase();
             const hdrs: Record<string, string> = {};
             if (opts?.headers) {
@@ -1048,7 +1131,7 @@ export default defineUnlistedScript(() => {
             const bodyStr = opts?.body != null ? String(opts.body) : undefined;
             redirectResponse = await proxyFetchThroughBackground(targetUrl, method, hdrs, bodyStr);
           } else {
-            redirectResponse = await originalFetch.apply(window, nextArgs as [RequestInfo, RequestInit?]);
+            redirectResponse = await originalFetch.apply(window, nextArgs);
           }
           resolve(redirectResponse);
           captureResponse(requestId, redirectResponse.clone(), requestType).catch(console.error);
@@ -1056,7 +1139,7 @@ export default defineUnlistedScript(() => {
         }
 
         default: {
-          const defaultResponse = await originalFetch.apply(window, originalArgs as [RequestInfo, RequestInit?]);
+          const defaultResponse = await originalFetch.apply(window, originalArgs);
           resolve(defaultResponse);
           captureResponse(requestId, defaultResponse.clone(), requestType).catch(console.error);
         }
@@ -1096,24 +1179,24 @@ export default defineUnlistedScript(() => {
   const originalXHRSetRequestHeader = XMLHttpRequest.prototype.setRequestHeader;
   const originalXHRAddEventListener = XMLHttpRequest.prototype.addEventListener;
 
-  XMLHttpRequest.prototype.open = function (this: XMLHttpRequest, method: string, url: string | URL, async?: boolean, user?: string | null, password?: string | null) {
-    (this as any)._apilot_method = method;
-    (this as any)._apilot_url = url;
-    (this as any)._apilot_headers = {};
+  XMLHttpRequest.prototype.open = function (this: ApilotXHR, method: string, url: string | URL, async?: boolean, user?: string | null, password?: string | null) {
+    this._apilot_method = method;
+    this._apilot_url = String(url);
+    this._apilot_headers = {};
     return originalXHROpen.call(this, method, url, async as boolean, user, password);
   };
 
-  XMLHttpRequest.prototype.setRequestHeader = function (name, value) {
-    if (!(this as any)._apilot_headers) (this as any)._apilot_headers = {};
-    (this as any)._apilot_headers[name] = value;
+  XMLHttpRequest.prototype.setRequestHeader = function (this: ApilotXHR, name: string, value: string) {
+    if (!this._apilot_headers) this._apilot_headers = {};
+    this._apilot_headers[name] = value;
     return originalXHRSetRequestHeader.call(this, name, value);
   };
 
-  XMLHttpRequest.prototype.send = function (data?: Document | XMLHttpRequestBodyInit | null) {
-    const xhr = this as any;
+  XMLHttpRequest.prototype.send = function (this: ApilotXHR, data?: Document | XMLHttpRequestBodyInit | null) {
+    const xhr = this;
 
     if (isMonitoringEnabled && xhr._apilot_url) {
-      const options = {
+      const options: RequestOptionsLike = {
         method: xhr._apilot_method || 'GET',
         body: data,
         headers: xhr._apilot_headers || {},
@@ -1126,7 +1209,7 @@ export default defineUnlistedScript(() => {
             ? window.location.origin + xhr._apilot_url
             : new URL(xhr._apilot_url, window.location.href).href;
         }
-      } catch (e) {
+      } catch (_e) {
         console.warn('[APILOT] Could not parse XHR URL:', xhr._apilot_url);
       }
 
@@ -1138,7 +1221,7 @@ export default defineUnlistedScript(() => {
         xhr._apilot_requestType = requestType;
 
         const frameContext = getFrameContext();
-        let payload: any;
+        let payload: Record<string, unknown>;
 
         if (requestType === 'graphql') {
           const requestData = parseGraphQLRequest(data);
@@ -1182,7 +1265,7 @@ export default defineUnlistedScript(() => {
 
           // responseType 'arraybuffer'/'blob'/'document' throw InvalidStateError when
           // accessing responseText — only read it for the two text-compatible types.
-          let responseData: any = null;
+          let responseData: unknown = null;
           let responseTextBytes = 0;
           try {
             if (xhr.responseType === '' || xhr.responseType === 'text') {
@@ -1273,8 +1356,9 @@ export default defineUnlistedScript(() => {
   // Mark this frame as the active interceptor.
   // Accessing window.top from a cross-origin iframe throws DOMException — guard it.
   try {
-    if (!(window.top as any).__APILOT_ACTIVE_FRAME__) {
-      (window.top as any).__APILOT_ACTIVE_FRAME__ = window.location.href;
+    const topWindow = window.top as ApilotWindow | null;
+    if (topWindow && !topWindow.__APILOT_ACTIVE_FRAME__) {
+      topWindow.__APILOT_ACTIVE_FRAME__ = window.location.href;
       console.log('🎯 [APILOT] This frame will handle API interception:', window.location.href);
     }
   } catch {

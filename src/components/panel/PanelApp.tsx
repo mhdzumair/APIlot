@@ -81,7 +81,7 @@ export function PanelApp({ tabId }: PanelAppProps) {
     return () => {
       void browser.runtime.sendMessage({ type: 'DEVTOOLS_CLOSED', tabId });
     };
-  }, [tabId]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [tabId]);
 
   // ------------------------------------------------------------------
   // Load initial data from the background script
