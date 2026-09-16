@@ -32,10 +32,21 @@ interface PageMessageEvent extends MessageEvent {
 // APIInterceptor
 // ---------------------------------------------------------------------------
 
+/** How long a computed redirect-proxy target stays valid, waiting for the matching PROXY_REDIRECT_REQUEST. */
+const REDIRECT_PROXY_TTL_MS = 15000;
+
 export class APIInterceptor {
   private isMonitoring: boolean = false;
   private pendingNetworkCapture: NetworkCaptureSettings;
   private _pageMessageListenerAttached: boolean = false;
+  /**
+   * requestId -> extension-computed redirect target, one-shot and short-lived.
+   * The page (untrusted) only ever supplies a requestId here — the actual
+   * fetch target always comes from this map, never from the page's message,
+   * so a page script cannot direct the background's CORS-bypassing fetch
+   * (which runs with <all_urls> host permission) at an arbitrary URL.
+   */
+  private pendingRedirectProxies = new Map<string, { url: string; expiresAt: number }>();
 
   constructor() {
     this.pendingNetworkCapture = this.defaultNetworkCapture();
@@ -272,6 +283,17 @@ export class APIInterceptor {
 
       // Send proceed/apply to the injected script RIGHT AWAY — do not wait for LOG_REQUEST.
       if (rulesToApply.length > 0) {
+        const redirectRule = rulesToApply.find((rule: { action?: string }) => rule.action === 'redirect');
+        if (redirectRule) {
+          const targetUrl = this.buildRedirectTargetUrl(redirectRule, payload.url as string);
+          if (targetUrl && payload.requestId) {
+            this.pruneExpiredRedirectProxies();
+            this.pendingRedirectProxies.set(payload.requestId as string, {
+              url: targetUrl,
+              expiresAt: Date.now() + REDIRECT_PROXY_TTL_MS,
+            });
+          }
+        }
         window.postMessage(
           {
             type: 'APPLY_API_RULES',
@@ -314,23 +336,91 @@ export class APIInterceptor {
 
   private handleProxyRedirectRequest(payload: Record<string, unknown>): void {
     const requestId = payload.requestId as string;
+    const origin = window.location.origin && window.location.origin !== 'null' ? window.location.origin : '*';
+
+    // Only ever proxy to a URL the content script itself computed from a real,
+    // rule-matched redirect for this requestId — never the page-supplied payload.url.
+    // This is what stops an arbitrary page script from steering the background's
+    // <all_urls> fetch (which bypasses CORS) at a URL of its own choosing.
+    if (!this.isMonitoring || !requestId) {
+      window.postMessage(
+        { type: 'PROXY_REDIRECT_RESPONSE', payload: { requestId, success: false, error: 'Not monitoring' } },
+        origin,
+      );
+      return;
+    }
+
+    const pending = this.pendingRedirectProxies.get(requestId);
+    this.pendingRedirectProxies.delete(requestId); // one-shot regardless of outcome
+
+    if (!pending || Date.now() > pending.expiresAt) {
+      window.postMessage(
+        { type: 'PROXY_REDIRECT_RESPONSE', payload: { requestId, success: false, error: 'No matching redirect rule pending' } },
+        origin,
+      );
+      return;
+    }
+
     browser.runtime.sendMessage({
       type: 'PROXY_FETCH',
-      url: payload.url,
+      url: pending.url,
       method: payload.method,
       headers: payload.headers,
       body: payload.body,
     }).then((res: unknown) => {
       window.postMessage(
         { type: 'PROXY_REDIRECT_RESPONSE', payload: { requestId, ...(res as Record<string, unknown>) } },
-        (window.location.origin && window.location.origin !== 'null' ? window.location.origin : '*'),
+        origin,
       );
     }).catch((err: unknown) => {
       window.postMessage(
         { type: 'PROXY_REDIRECT_RESPONSE', payload: { requestId, success: false, error: String(err) } },
-        (window.location.origin && window.location.origin !== 'null' ? window.location.origin : '*'),
+        origin,
       );
     });
+  }
+
+  private pruneExpiredRedirectProxies(): void {
+    const now = Date.now();
+    for (const [id, entry] of this.pendingRedirectProxies) {
+      if (now > entry.expiresAt) this.pendingRedirectProxies.delete(id);
+    }
+  }
+
+  /** Mirrors the injected page script's redirect-target computation (see entrypoints/injected.ts). */
+  private buildRedirectTargetUrl(rule: { redirectUrl?: string; redirectFilenameOnly?: boolean; redirectPreservePath?: boolean }, sourceAbsoluteUrl: string): string | null {
+    const base = (rule.redirectUrl || '').trim();
+    if (!base) return null;
+    try {
+      const { protocol } = new URL(base);
+      if (protocol !== 'http:' && protocol !== 'https:') return null;
+    } catch {
+      return null;
+    }
+    try {
+      const src = new URL(sourceAbsoluteUrl);
+      if (rule.redirectFilenameOnly) {
+        const segments = src.pathname.split('/').filter(Boolean);
+        const filename = segments[segments.length - 1] || '';
+        if (!filename) return null;
+        const b = new URL(base);
+        return b.origin.replace(/\/$/, '') + '/' + filename + src.search + (src.hash || '');
+      }
+      if (rule.redirectPreservePath) {
+        return new URL(src.pathname + src.search + src.hash, base).href;
+      }
+      const b = new URL(base);
+      let out = b.origin + b.pathname;
+      if (b.search) {
+        out += b.search;
+      } else if (src.search) {
+        out += src.search;
+      }
+      if (src.hash && !out.includes('#')) out += src.hash;
+      return out;
+    } catch {
+      return base;
+    }
   }
 
   private async handleAPIResponse(payload: Record<string, unknown>): Promise<void> {
