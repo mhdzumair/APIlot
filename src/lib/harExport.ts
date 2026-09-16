@@ -150,6 +150,105 @@ export function harExport(entries: LogEntry[]): HARRoot {
   };
 }
 
+function fromNameValue(pairs: HARNameValue[]): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const { name, value } of pairs) out[name] = value;
+  return out;
+}
+
+function detectRequestType(url: string, postData?: HARPostData): 'graphql' | 'rest' | 'static' {
+  if (postData?.text) {
+    try {
+      const parsed = JSON.parse(postData.text);
+      if (parsed && typeof parsed === 'object' && typeof parsed.query === 'string') return 'graphql';
+    } catch { /* not JSON / not graphql */ }
+  }
+  try {
+    const ext = new URL(url).pathname.split('.').pop()?.toLowerCase() ?? '';
+    if (['js', 'mjs', 'css', 'html', 'htm', 'svg', 'png', 'jpg', 'jpeg', 'gif', 'woff', 'woff2'].includes(ext)) {
+      return 'static';
+    }
+  } catch { /* ignore */ }
+  return 'rest';
+}
+
+let importCounter = 0;
+
+/** Parses a HAR document (as exported by `harExport`, DevTools, or any HAR 1.2 tool) into LogEntry[]. */
+export function harImport(har: HARRoot, tabId: number): LogEntry[] {
+  return har.log.entries.map((entry): LogEntry => {
+    const requestType = detectRequestType(entry.request.url, entry.request.postData);
+    const requestHeaders = fromNameValue(entry.request.headers);
+    const responseHeaders = fromNameValue(entry.response.headers);
+    const startTime = new Date(entry.startedDateTime).getTime();
+
+    let query: string | undefined;
+    let operationName: string | undefined;
+    let variables: Record<string, unknown> | undefined;
+    let body: unknown;
+
+    if (entry.request.postData?.text) {
+      if (requestType === 'graphql') {
+        try {
+          const parsed = JSON.parse(entry.request.postData.text);
+          query = parsed.query;
+          operationName = parsed.operationName;
+          variables = parsed.variables;
+        } catch { /* ignore malformed graphql payload */ }
+      } else {
+        try {
+          body = JSON.parse(entry.request.postData.text);
+        } catch {
+          body = entry.request.postData.text;
+        }
+      }
+    }
+
+    let response: unknown;
+    if (entry.response.content.text) {
+      try {
+        response = JSON.parse(entry.response.content.text);
+      } catch {
+        response = entry.response.content.text;
+      }
+    }
+
+    let path: string | undefined;
+    let endpoint: string | undefined;
+    try {
+      const u = new URL(entry.request.url);
+      endpoint = u.origin;
+      path = u.pathname;
+    } catch { /* ignore */ }
+
+    return {
+      id: `har-import-${Date.now()}-${importCounter++}`,
+      tabId,
+      timestamp: entry.startedDateTime,
+      requestType,
+      url: entry.request.url,
+      source: 'webRequest',
+      operationName,
+      query,
+      variables,
+      method: entry.request.method,
+      endpoint,
+      path,
+      body,
+      requestHeaders,
+      startTime,
+      response,
+      responseStatus: entry.response.status || undefined,
+      responseStatusText: entry.response.statusText || undefined,
+      responseHeaders,
+      responseTimestamp: entry.startedDateTime,
+      endTime: startTime + (entry.time || 0),
+      responseTime: entry.time || undefined,
+      transferSize: entry.response.content.size > 0 ? entry.response.content.size : undefined,
+    };
+  });
+}
+
 export function downloadHAR(entries: LogEntry[], filename?: string): void {
   const har = harExport(entries);
   const blob = new Blob([JSON.stringify(har, null, 2)], { type: 'application/json' });
