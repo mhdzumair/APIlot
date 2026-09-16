@@ -352,23 +352,21 @@ export function QueryBuilderTab() {
          ================================================================ */}
       <div className="flex-1 min-w-0 flex flex-col min-h-0 border-r">
         {/* Mode toggle header */}
-        <div className="px-3 pt-2.5 pb-2 border-b shrink-0 flex items-center justify-between">
-          <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+        <div className="px-3.5 pt-3 pb-2.5 border-b shrink-0 flex items-center gap-3">
+          <h2 className="font-mono text-sm font-semibold tracking-[0.05em] text-foreground truncate">
             {customQueryMode ? 'Custom Query' : selectedOperation ? selectedOperation.name : 'Configuration'}
-          </span>
-          <div className="flex items-center gap-1.5">
-            <button
-              className={`text-[10px] font-medium px-2 py-0.5 rounded border transition-colors ${
-                customQueryMode
-                  ? 'bg-primary text-primary-foreground border-primary'
-                  : 'bg-transparent text-muted-foreground border-border hover:text-foreground hover:border-foreground/50'
-              }`}
-              onClick={() => setCustomQueryMode(!customQueryMode)}
-              title={customQueryMode ? 'Switch to visual mode' : 'Switch to custom query mode'}
-            >
-              {customQueryMode ? 'Visual Mode' : 'Custom Query'}
-            </button>
-          </div>
+          </h2>
+          <button
+            className={`ml-auto text-[12px] font-medium px-2.5 py-1 rounded-[7px] border transition-colors shrink-0 ${
+              customQueryMode
+                ? 'bg-primary text-primary-foreground border-primary'
+                : 'bg-transparent text-muted-foreground border-border hover:text-foreground hover:border-foreground/50'
+            }`}
+            onClick={() => setCustomQueryMode(!customQueryMode)}
+            title={customQueryMode ? 'Switch to visual mode' : 'Switch to custom query mode'}
+          >
+            {customQueryMode ? 'Visual Mode' : 'Custom Query'}
+          </button>
         </div>
 
         <div className="flex-1 overflow-y-auto min-h-0 p-3">
@@ -398,7 +396,7 @@ export function QueryBuilderTab() {
                 <p className="text-sm font-medium text-foreground/70">No operation selected</p>
                 <p className="text-xs text-muted-foreground mt-1 max-w-[220px] leading-relaxed">
                   Go to <strong>Schema Explorer</strong> → find an operation → click{' '}
-                  <span className="font-mono bg-primary/10 text-primary px-1 rounded">→ Build</span>
+                  <span className="font-mono bg-primary/10 text-primary px-1 rounded-[5px]">→ Build</span>
                 </p>
               </div>
             </div>
@@ -407,13 +405,7 @@ export function QueryBuilderTab() {
             <div className="space-y-4">
               {/* Operation type badge */}
               <div className="flex items-center gap-2">
-                <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded capitalize ${
-                  operationType === 'query'
-                    ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300'
-                    : operationType === 'mutation'
-                    ? 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-300'
-                    : 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300'
-                }`}>
+                <span className="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded-[6px] capitalize bg-[var(--t-rest-bg)] text-[var(--t-rest-fg)]">
                   {operationType}
                 </span>
                 {currentOp?.description && (
@@ -426,7 +418,7 @@ export function QueryBuilderTab() {
               {/* ---- Arguments ---- */}
               {(currentOp?.args?.length ?? 0) > 0 && (
                 <div>
-                  <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">
+                  <h4 className="text-[11px] font-bold tracking-[0.08em] text-[var(--text3)] uppercase mb-2">
                     Arguments
                   </h4>
                   <div className="space-y-2">
@@ -442,13 +434,13 @@ export function QueryBuilderTab() {
                               onChange={() => toggleArgument(arg.name)}
                               className="h-3 w-3 accent-primary"
                             />
-                            <span className="text-[11px] font-mono text-foreground">
+                            <span className="text-[13px] font-mono text-foreground">
                               {arg.name}
                               {isRequired && (
-                                <span className="text-destructive ml-0.5">*</span>
+                                <span className="text-[var(--err)] ml-0.5">*</span>
                               )}
                             </span>
-                            <span className="text-[10px] text-muted-foreground font-mono ml-auto">
+                            <span className="text-[12px] text-[var(--t-rest-fg)] font-mono ml-auto">
                               {arg.type}
                             </span>
                           </label>
@@ -462,15 +454,15 @@ export function QueryBuilderTab() {
                                   setArgumentValue(arg.name, e.target.value)
                                 }
                                 placeholder={`Enter ${arg.name}...`}
-                                className="w-full rounded border border-input bg-background px-2 py-1 text-xs font-mono outline-none focus-visible:ring-1 focus-visible:ring-ring placeholder:text-muted-foreground"
+                                className="w-full rounded-[8px] border border-input bg-background px-2.5 py-1.5 text-[13px] font-mono outline-none focus-visible:ring-1 focus-visible:ring-ring placeholder:text-muted-foreground"
                               />
                               {capturedValues[arg.name]?.length > 0 && (
-                                <div className="flex flex-wrap gap-1 mt-1">
-                                  <span className="text-[9px] text-muted-foreground">Captured:</span>
+                                <div className="flex flex-wrap items-center gap-1.5 mt-1.5">
+                                  <span className="text-[12px] text-[var(--text3)]">Captured:</span>
                                   {capturedValues[arg.name].map((v) => (
                                     <button
                                       key={v}
-                                      className="text-[9px] font-mono bg-primary/10 text-primary px-1.5 py-px rounded hover:bg-primary/20 transition-colors border border-primary/20 max-w-[120px] truncate"
+                                      className="text-[12px] font-mono bg-[var(--warn-bg)] text-[var(--warn)] px-2 py-0.5 rounded-[6px] hover:opacity-80 transition-opacity max-w-[140px] truncate"
                                       onClick={() => setArgumentValue(arg.name, v)}
                                       title={v}
                                     >
@@ -490,9 +482,16 @@ export function QueryBuilderTab() {
 
               {/* ---- Response Fields ---- */}
               <div className="flex flex-col min-h-0">
-                <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2 shrink-0">
-                  Response Fields
-                </h4>
+                <div className="flex items-center gap-2.5 mb-2 shrink-0">
+                  <h4 className="text-[11px] font-bold tracking-[0.08em] text-[var(--text3)] uppercase">
+                    Response Fields
+                  </h4>
+                  {returnFields.length > 0 && (
+                    <span className="text-[10px] text-[var(--text3)]">
+                      {selectedFields.size} of {returnFields.length} selected
+                    </span>
+                  )}
+                </div>
                 {returnFields.length === 0 ? (
                   <p className="text-xs text-muted-foreground italic">
                     No fields available for this return type.
@@ -520,11 +519,11 @@ export function QueryBuilderTab() {
         {/* Generated query */}
         <div className="flex flex-col min-h-0 flex-1">
           <div className="flex items-center justify-between mb-1.5 shrink-0">
-            <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+            <h4 className="text-[11px] font-bold tracking-[0.08em] text-[var(--text3)] uppercase">
               {customQueryMode ? 'Query Preview' : 'Generated Query'}
             </h4>
           </div>
-          <div className="flex-1 min-h-0 overflow-hidden rounded border">
+          <div className="flex-1 min-h-0">
             <CodeBlock
               content={
                 customQueryMode
@@ -532,17 +531,18 @@ export function QueryBuilderTab() {
                   : (generatedQuery || '# Select an operation to get started.')
               }
               language="graphql"
-              className="h-full max-h-none rounded-none border-0"
+              fill
+              className="rounded-[10px] bg-[var(--surface2)]/40"
             />
           </div>
         </div>
 
         {/* Variables */}
         <div className="shrink-0">
-          <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1.5">
+          <h4 className="text-[11px] font-bold tracking-[0.08em] text-[var(--text3)] uppercase mb-1.5">
             Variables
             {variablesError && (
-              <span className="ml-2 text-destructive text-[10px] normal-case font-normal">
+              <span className="ml-2 text-[var(--err)] text-[10px] normal-case font-normal tracking-normal">
                 {variablesError}
               </span>
             )}
@@ -550,7 +550,7 @@ export function QueryBuilderTab() {
           <Textarea
             value={variablesText}
             onChange={handleVariablesChange}
-            className="font-mono text-xs min-h-[64px] resize-none"
+            className="font-mono text-xs min-h-[90px] resize-none rounded-[10px] bg-[var(--surface2)]/40"
             placeholder="{}"
             spellCheck={false}
           />
@@ -561,8 +561,8 @@ export function QueryBuilderTab() {
           <Button
             onClick={handleExecute}
             disabled={!canExecute}
-            className="flex-1"
-            size="sm"
+            className="flex-1 rounded-[10px] py-3 text-[15px] font-extrabold bg-[var(--accent-strong)] text-[var(--accent-on)] hover:bg-[var(--accent-strong)]/90"
+            size="lg"
           >
             {loading ? (
               <>
@@ -591,21 +591,17 @@ export function QueryBuilderTab() {
         {response !== null && (
           <div className="flex flex-col min-h-0 flex-1 overflow-hidden">
             <div className="flex items-center justify-between mb-1.5 shrink-0">
-              <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+              <h4 className="text-[11px] font-bold tracking-[0.08em] text-[var(--text3)] uppercase">
                 Response
               </h4>
               {responseTime !== null && (
-                <span className="text-[10px] text-muted-foreground">
+                <span className="text-[10px] text-[var(--text3)]">
                   {responseTime}ms
                 </span>
               )}
             </div>
-            <div className="flex-1 min-h-0 overflow-hidden rounded border">
-              <CodeBlock
-                content={response}
-                language="json"
-                className="h-full max-h-none rounded-none border-0"
-              />
+            <div className="flex-1 min-h-0">
+              <CodeBlock content={response} language="json" fill />
             </div>
           </div>
         )}
@@ -626,16 +622,10 @@ interface OperationTabProps {
   onClose: () => void;
 }
 
-const OP_TYPE_COLORS: Record<string, string> = {
-  query: 'text-blue-500 dark:text-blue-400',
-  mutation: 'text-orange-500 dark:text-orange-400',
-  subscription: 'text-purple-500 dark:text-purple-400',
-};
-
 function OperationTab({ tab, isActive, onSelect, onClose }: OperationTabProps) {
   return (
     <div
-      className={`flex items-center gap-1 px-3 py-1.5 cursor-pointer border-r border-border/50 shrink-0 transition-colors ${
+      className={`flex items-center gap-1.5 px-3 py-1.5 cursor-pointer border-r border-border/50 shrink-0 transition-colors ${
         isActive
           ? 'bg-background border-t-2 border-t-primary text-foreground'
           : 'hover:bg-muted/60 text-muted-foreground border-t-2 border-t-transparent'
@@ -647,8 +637,8 @@ function OperationTab({ tab, isActive, onSelect, onClose }: OperationTabProps) {
       aria-selected={isActive}
       title={`${tab.operationType} ${tab.name}`}
     >
-      <span className={`text-[9px] font-semibold uppercase ${OP_TYPE_COLORS[tab.operationType]}`}>
-        {tab.operationType[0]}
+      <span className="flex items-center justify-center h-4 w-4 rounded-[4px] bg-[var(--t-gql-bg)] text-[var(--t-gql-fg)] text-[9px] font-bold uppercase shrink-0">
+        {tab.operationType === 'query' ? 'Q' : tab.operationType === 'mutation' ? 'M' : 'S'}
       </span>
       <span className="text-xs font-mono max-w-[100px] truncate">{tab.name}</span>
       <button

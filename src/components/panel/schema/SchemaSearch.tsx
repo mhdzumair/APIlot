@@ -9,11 +9,16 @@ interface SchemaSearchProps {
 
 export function SchemaSearch({ value, onChange, placeholder = 'Search…' }: SchemaSearchProps) {
   return (
-    <Input
-      className="h-7 text-xs"
-      placeholder={placeholder}
-      value={value}
-      onChange={(e) => onChange(e.target.value)}
-    />
+    <label className="relative block">
+      <span className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">
+        ⌕
+      </span>
+      <Input
+        className="h-8 text-xs rounded-[9px] pl-7"
+        placeholder={placeholder}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+      />
+    </label>
   );
 }

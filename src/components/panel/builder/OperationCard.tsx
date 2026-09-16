@@ -10,9 +10,9 @@ interface OperationCardProps {
 }
 
 const TYPE_BADGE_COLORS: Record<string, string> = {
-  query: 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300',
-  mutation: 'bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-300',
-  subscription: 'bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300',
+  query: 'bg-[var(--t-rest-bg)] text-[var(--t-rest-fg)]',
+  mutation: 'bg-[var(--warn-bg)] text-[var(--warn)]',
+  subscription: 'bg-[var(--t-gql-bg)] text-[var(--t-gql-fg)]',
 };
 
 export function OperationCard({
@@ -29,7 +29,7 @@ export function OperationCard({
       type="button"
       onClick={onClick}
       className={cn(
-        'w-full text-left rounded-md border px-3 py-2 text-xs transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring',
+        'w-full text-left rounded-[10px] border px-3 py-2 text-xs transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring',
         isSelected
           ? 'border-primary bg-primary/5 dark:bg-primary/10'
           : 'border-border bg-background hover:bg-accent hover:text-accent-foreground'
@@ -39,7 +39,7 @@ export function OperationCard({
       <div className="flex items-center gap-2 min-w-0">
         <span
           className={cn(
-            'shrink-0 rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase',
+            'shrink-0 rounded-[6px] px-1.5 py-0.5 text-[10px] font-bold uppercase',
             TYPE_BADGE_COLORS[operationType] ?? TYPE_BADGE_COLORS.query
           )}
         >
@@ -53,7 +53,7 @@ export function OperationCard({
         >
           {operation.name}
         </span>
-        <span className="ml-auto shrink-0 text-muted-foreground font-mono truncate max-w-[120px]">
+        <span className="ml-auto shrink-0 text-[var(--t-rest-fg)] font-mono truncate max-w-[120px]">
           {operation.type}
         </span>
       </div>

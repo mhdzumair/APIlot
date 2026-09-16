@@ -721,10 +721,14 @@ export function RuleEditorDialog({
           )}
 
           <DialogFooter className="pt-2">
-            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+            <Button type="button" variant="outline" className="rounded-[9px]" onClick={() => onOpenChange(false)}>
               Cancel
             </Button>
-            <Button type="submit" disabled={saving}>
+            <Button
+              type="submit"
+              disabled={saving}
+              className="rounded-[9px] bg-[var(--accent-strong)] text-[var(--accent-on)] font-bold hover:bg-[var(--accent-strong)]/90"
+            >
               {saving ? 'Saving…' : isEditing ? 'Update Rule' : 'Add Rule'}
             </Button>
           </DialogFooter>

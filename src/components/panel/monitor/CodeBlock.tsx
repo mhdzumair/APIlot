@@ -77,9 +77,11 @@ interface CodeBlockProps {
   language?: 'json' | 'graphql';
   className?: string;
   searchTerm?: string;
+  /** When true, the code area grows to fill its parent's height instead of capping at a fixed max-height. */
+  fill?: boolean;
 }
 
-export function CodeBlock({ content, language = 'json', className, searchTerm = '' }: CodeBlockProps) {
+export function CodeBlock({ content, language = 'json', className, searchTerm = '', fill = false }: CodeBlockProps) {
   const codeRef = useRef<HTMLElement>(null);
   const [copied, setCopied] = React.useState(false);
 
@@ -125,16 +127,19 @@ export function CodeBlock({ content, language = 'json', className, searchTerm = 
   }, [content]);
 
   return (
-    <div className={cn('relative group rounded border bg-muted/40', className)}>
+    <div className={cn('relative group rounded-lg border bg-muted/40', fill && 'flex flex-col h-full', className)}>
       <Button
         variant="ghost"
         size="sm"
-        className="absolute top-1 right-1 h-5 px-2 text-[10px] opacity-0 group-hover:opacity-100 transition-opacity z-10 font-mono"
+        className="absolute top-1.5 right-1.5 h-5 px-2 text-[10px] opacity-0 group-hover:opacity-100 transition-opacity z-10 font-mono"
         onClick={handleCopy}
       >
         {copied ? '✓ copied' : 'copy'}
       </Button>
-      <pre className="overflow-auto text-xs p-3 pr-14 max-h-64 m-0 apilot-scrollbar">
+      <pre className={cn(
+        'overflow-auto text-[13px] p-3.5 pr-14 m-0 apilot-scrollbar leading-relaxed',
+        fill ? 'flex-1 min-h-0' : 'max-h-[300px]'
+      )}>
         <code ref={codeRef} className={`language-${language} hljs`}>
           {content}
         </code>

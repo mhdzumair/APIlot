@@ -11,10 +11,10 @@ function barColor(entry: LogEntry): string {
   const isError =
     !!entry.responseError ||
     (entry.responseStatus !== undefined && entry.responseStatus >= 400);
-  if (isError) return 'bg-red-500/70';
-  if (entry.requestType === 'graphql') return 'bg-pink-500/70';
-  if (entry.requestType === 'static') return 'bg-zinc-500/50';
-  return 'bg-blue-500/70';
+  if (isError) return 'bg-[var(--err)]';
+  if (entry.requestType === 'graphql') return 'bg-[var(--t-gql-fg)]';
+  if (entry.requestType === 'static') return 'bg-[var(--t-static-fg)]';
+  return 'bg-[var(--t-rest-fg)]';
 }
 
 // ─── Tooltip ──────────────────────────────────────────────────────────────────
@@ -85,12 +85,12 @@ function Tooltip({ info }: { info: TooltipInfo }) {
       <div className="flex items-center gap-3 mt-1.5 text-[10px] font-mono">
         <span className="text-muted-foreground">{method}</span>
         {entry.responseStatus !== undefined && (
-          <span className={entry.responseStatus >= 400 ? 'text-red-400' : 'text-emerald-400'}>
+          <span className={entry.responseStatus >= 400 ? 'text-[var(--err)]' : 'text-[var(--ok)]'}>
             {entry.responseStatus}
           </span>
         )}
         {isPending ? (
-          <span className="text-amber-400">pending…</span>
+          <span className="text-[var(--warn)]">pending…</span>
         ) : ms !== undefined ? (
           <span>{formatDuration(ms)}</span>
         ) : null}
@@ -181,14 +181,14 @@ export function WaterfallView({ requests }: WaterfallViewProps) {
     );
   }
 
-  const ROW_LABEL_WIDTH = 160; // px
+  const ROW_LABEL_WIDTH = 180; // px
 
   return (
     <div ref={scrollContainerRef} className="flex flex-col overflow-auto h-full text-[11px]" onScroll={handleScroll}>
       {/* Header row */}
-      <div className="flex shrink-0 border-b border-border/40 bg-muted/20 sticky top-0 z-10">
+      <div className="flex shrink-0 border-b border-border/40 bg-[var(--surface2)] sticky top-0 z-10">
         <div
-          className="shrink-0 px-2 py-1 text-[10px] text-muted-foreground font-medium border-r border-border/30"
+          className="shrink-0 px-3 py-1.5 text-[11px] text-muted-foreground font-semibold border-r border-border/30"
           style={{ width: ROW_LABEL_WIDTH }}
         >
           Request
@@ -219,22 +219,22 @@ export function WaterfallView({ requests }: WaterfallViewProps) {
           >
             {/* Label column */}
             <div
-              className="shrink-0 flex items-center gap-1.5 px-2 py-1 border-r border-border/20 min-w-0"
+              className="shrink-0 flex items-center gap-1.5 px-3 py-1.5 border-r border-border/20 min-w-0"
               style={{ width: ROW_LABEL_WIDTH }}
             >
               <span
                 className={cn(
-                  'inline-flex items-center justify-center rounded px-1 py-px text-[9px] font-bold uppercase shrink-0 font-mono',
+                  'inline-flex items-center justify-center rounded-[4px] px-1 py-px text-[9px] font-bold uppercase shrink-0 font-mono',
                   entry.requestType === 'graphql'
-                    ? 'bg-pink-500/15 text-pink-400'
+                    ? 'bg-[var(--t-gql-bg)] text-[var(--t-gql-fg)]'
                     : entry.requestType === 'static'
-                    ? 'bg-zinc-500/10 text-zinc-400'
-                    : 'bg-blue-500/12 text-blue-400',
+                    ? 'bg-[var(--t-static-bg)] text-[var(--t-static-fg)]'
+                    : 'bg-[var(--t-rest-bg)] text-[var(--t-rest-fg)]',
                 )}
               >
                 {entry.requestType === 'graphql' ? 'GQL' : getRequestMethod(entry).slice(0, 4)}
               </span>
-              <span className="truncate text-foreground/80 min-w-0" title={name}>
+              <span className="truncate text-foreground/80 min-w-0 font-medium" title={name}>
                 {name}
               </span>
             </div>
@@ -276,14 +276,23 @@ export function WaterfallView({ requests }: WaterfallViewProps) {
                 onBlur={() => setTooltip(null)}
                 onKeyDown={() => { /* bar is info-only */ }}
               />
-              {/* Duration label inside bar (only if wide enough) */}
-              {widthPct > 8 && durationMs > 0 && (
-                <span
-                  className="absolute top-1 h-4 flex items-center px-1 text-[9px] font-mono text-white/80 pointer-events-none"
-                  style={{ left: `${leftPct}%`, width: `${widthPct}%` }}
-                >
-                  {formatDuration(durationMs)}
-                </span>
+              {/* Duration label — inside the bar if wide enough, otherwise just to the right */}
+              {durationMs > 0 && (
+                widthPct > 8 ? (
+                  <span
+                    className="absolute top-1 h-4 flex items-center px-1 text-[9px] font-mono text-white/90 pointer-events-none"
+                    style={{ left: `${leftPct}%`, width: `${widthPct}%` }}
+                  >
+                    {formatDuration(durationMs)}
+                  </span>
+                ) : (
+                  <span
+                    className="absolute top-1 h-4 flex items-center pl-1 text-[9px] font-mono text-[var(--text3)] pointer-events-none whitespace-nowrap"
+                    style={{ left: `${leftPct + widthPct}%` }}
+                  >
+                    {formatDuration(durationMs)}
+                  </span>
+                )
               )}
             </div>
           </div>

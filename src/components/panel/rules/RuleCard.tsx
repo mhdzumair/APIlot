@@ -1,4 +1,5 @@
 import * as React from 'react';
+import { useState } from 'react';
 import { toast } from 'sonner';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -60,7 +61,9 @@ interface RuleCardProps {
 // ---------------------------------------------------------------------------
 
 export function RuleCard({ ruleId, rule, onEdit, onDelete }: RuleCardProps) {
-  const { updateRule } = useRulesStore();
+  const { updateRule, addRule } = useRulesStore();
+  const [copied, setCopied] = useState(false);
+  const [duplicating, setDuplicating] = useState(false);
 
   async function handleToggle(enabled: boolean) {
     const updated: ApiRule = { ...rule, enabled };
@@ -77,6 +80,29 @@ export function RuleCard({ ruleId, rule, onEdit, onDelete }: RuleCardProps) {
     }
   }
 
+  /** Duplicates this rule as a new, independent rule. */
+  async function handleCopy() {
+    if (duplicating) return;
+    setDuplicating(true);
+    const { id: _id, ...rest } = rule;
+    const duplicateData: Omit<ApiRule, 'id'> = { ...rest, name: `${rule.name} (copy)` };
+    try {
+      const resp = await sendMsg({ type: 'ADD_RULE', rule: duplicateData });
+      if (resp?.success) {
+        addRule(resp.ruleId, { ...duplicateData, id: resp.ruleId });
+        setCopied(true);
+        window.setTimeout(() => setCopied(false), 1500);
+      } else {
+        toast.error('Failed to duplicate rule.');
+      }
+    } catch (err) {
+      console.error('[RuleCard] duplicate error:', err);
+      toast.error('An error occurred while duplicating the rule.');
+    } finally {
+      setDuplicating(false);
+    }
+  }
+
   // URL/endpoint summary line
   const urlSummary =
     rule.urlPattern ??
@@ -86,46 +112,59 @@ export function RuleCard({ ruleId, rule, onEdit, onDelete }: RuleCardProps) {
     null;
 
   return (
-    <div
-      className={`border rounded-md px-4 py-3 space-y-2 transition-opacity ${
-        rule.enabled ? 'opacity-100' : 'opacity-50'
+    <article
+      className={`rounded-xl border border-border bg-card px-5 py-4 transition-opacity ${
+        rule.enabled ? 'opacity-100' : 'opacity-60'
       }`}
     >
       {/* Top row: name + toggle */}
-      <div className="flex items-center justify-between gap-2">
-        <span className="font-medium text-sm truncate flex-1">{rule.name}</span>
+      <div className="flex items-center gap-3">
+        <h3
+          className={`flex-1 min-w-0 truncate text-sm font-bold ${
+            rule.enabled ? 'text-foreground' : 'text-[var(--text3)]'
+          }`}
+        >
+          {rule.name}
+        </h3>
         <div className="flex items-center gap-1.5 shrink-0">
           <Switch
             checked={rule.enabled}
             onCheckedChange={handleToggle}
             aria-label={rule.enabled ? 'Disable rule' : 'Enable rule'}
           />
-          <span className="text-xs text-muted-foreground w-14">
+          <span
+            className={`text-xs font-semibold w-14 ${
+              rule.enabled ? 'text-primary' : 'text-[var(--text3)]'
+            }`}
+          >
             {rule.enabled ? 'Enabled' : 'Disabled'}
           </span>
         </div>
       </div>
 
       {/* Badges row */}
-      <div className="flex flex-wrap items-center gap-1.5">
-        <Badge variant={requestTypeBadgeVariant(rule.requestType)} className="capitalize text-[11px]">
+      <div className="flex flex-wrap items-center gap-2 my-3.5">
+        <Badge
+          variant={requestTypeBadgeVariant(rule.requestType)}
+          className="rounded-full border-transparent bg-[var(--accent-strong)] text-[var(--accent-on)] capitalize text-[11px] font-semibold"
+        >
           {requestTypeLabel(rule.requestType)}
         </Badge>
-        <Badge variant="outline" className="text-[11px]">
+        <Badge variant="outline" className="rounded-full text-[11px]">
           {actionLabel(rule)}
         </Badge>
         {rule.requestType !== 'rest' && rule.requestType !== 'static' && rule.operationName && (
-          <Badge variant="outline" className="text-[11px] font-mono">
+          <Badge variant="outline" className="rounded-full text-[11px] font-mono">
             {rule.operationName}
           </Badge>
         )}
         {(rule.requestType === 'rest') && rule.httpMethod && rule.httpMethod !== 'ALL' && (
-          <Badge variant="outline" className="text-[11px] font-mono uppercase">
+          <Badge variant="outline" className="rounded-full text-[11px] font-mono uppercase">
             {rule.httpMethod}
           </Badge>
         )}
         {rule.requestType === 'static' && rule.redirectFilenameOnly && (
-          <Badge variant="outline" className="text-[11px]">
+          <Badge variant="outline" className="rounded-full text-[11px]">
             filename-only
           </Badge>
         )}
@@ -133,16 +172,16 @@ export function RuleCard({ ruleId, rule, onEdit, onDelete }: RuleCardProps) {
 
       {/* URL pattern */}
       {urlSummary && (
-        <p className="text-xs text-muted-foreground font-mono truncate">{urlSummary}</p>
+        <p className="text-xs text-[var(--text3)] font-mono truncate mb-3.5">{urlSummary}</p>
       )}
 
       {/* Action buttons */}
-      <div className="flex items-center gap-2 pt-1">
+      <div className="flex items-center gap-2">
         <Button
           type="button"
           variant="outline"
           size="sm"
-          className="h-7 text-xs"
+          className="h-7 rounded-[9px] text-xs"
           onClick={() => onEdit(ruleId)}
         >
           Edit
@@ -151,12 +190,24 @@ export function RuleCard({ ruleId, rule, onEdit, onDelete }: RuleCardProps) {
           type="button"
           variant="outline"
           size="sm"
-          className="h-7 text-xs text-destructive hover:bg-destructive hover:text-destructive-foreground"
+          className="h-7 rounded-[9px] text-xs"
+          onClick={handleCopy}
+          disabled={duplicating}
+          aria-label={`Duplicate rule ${rule.name}`}
+          title={`Duplicate rule ${rule.name}`}
+        >
+          {copied ? 'Copied ✓' : 'Copy'}
+        </Button>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="h-7 rounded-[9px] text-xs border-[var(--err)] text-[var(--err)] hover:bg-[var(--err-bg)] hover:text-[var(--err)]"
           onClick={() => onDelete(ruleId)}
         >
           Delete
         </Button>
       </div>
-    </div>
+    </article>
   );
 }

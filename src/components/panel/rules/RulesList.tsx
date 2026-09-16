@@ -19,7 +19,7 @@ interface RulesListProps {
 export function RulesList({ rules, onEdit, onDelete }: RulesListProps) {
   if (rules.size === 0) {
     return (
-      <div className="flex flex-col items-center justify-center h-40 text-center text-muted-foreground select-none gap-2">
+      <div className="flex flex-col items-center justify-center h-40 text-center text-[var(--text3)] select-none gap-2">
         <svg
           width="28"
           height="28"
@@ -32,14 +32,14 @@ export function RulesList({ rules, onEdit, onDelete }: RulesListProps) {
           <path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2" />
           <rect x="9" y="3" width="6" height="4" rx="1" ry="1" />
         </svg>
-        <p className="text-sm">No rules configured yet.</p>
+        <p className="text-sm font-medium text-muted-foreground">No rules configured yet.</p>
         <p className="text-xs">Click &ldquo;Add Rule&rdquo; to get started.</p>
       </div>
     );
   }
 
   return (
-    <div className="space-y-2">
+    <div className="space-y-3">
       {Array.from(rules.entries()).map(([id, rule]) => (
         <RuleCard
           key={id}

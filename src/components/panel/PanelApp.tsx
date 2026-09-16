@@ -182,16 +182,15 @@ export function PanelApp({ tabId }: PanelAppProps) {
       >
         {/* Header chrome */}
         <div className="shrink-0 border-b bg-card">
-          <div className="flex items-center gap-2.5 px-3 pt-2 pb-0">
-            <svg width="16" height="16" viewBox="0 0 18 18" fill="none" className="shrink-0">
-              <rect x="0" y="0" width="18" height="18" rx="4" fill="hsl(var(--primary))" fillOpacity="0.15"/>
-              <circle cx="9" cy="9" r="3.5" stroke="hsl(var(--primary))" strokeWidth="1.5"/>
-              <circle cx="9" cy="9" r="1" fill="hsl(var(--primary))"/>
-              <path d="M9 2v2M9 14v2M2 9h2M14 9h2" stroke="hsl(var(--primary))" strokeWidth="1.5" strokeLinecap="round" opacity="0.6"/>
-            </svg>
-            <span className="text-[13px] font-bold tracking-tight text-primary">APIlot</span>
-            <div className="h-3 w-px bg-border" />
-            <span className="font-mono text-[11px] text-muted-foreground/75">
+          <div className="flex items-center gap-2.5 px-3.5 py-2.5">
+            <img
+              src="/assets/icons/icon-32.png"
+              alt=""
+              aria-hidden="true"
+              className="flex-none block w-[26px] h-[26px] rounded-lg object-contain"
+            />
+            <span className="text-[18px] font-extrabold tracking-tight">APIlot</span>
+            <span className="font-mono text-[13px] text-[var(--text3)]">
               tab&nbsp;{tabId === -1 ? '—' : tabId}
             </span>
             <div className="flex-1" />
@@ -203,16 +202,16 @@ export function PanelApp({ tabId }: PanelAppProps) {
 
           {/* Tab bar — horizontally scrollable, fade-out on right edge indicates more tabs */}
           <div className="relative">
-            <TabsList variant="line" className="w-full justify-start bg-transparent rounded-none h-auto p-0 gap-0 overflow-x-auto overflow-y-hidden mt-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+            <TabsList variant="line" className="w-full justify-start bg-transparent rounded-none h-auto p-0 gap-1 px-2 overflow-x-auto overflow-y-hidden [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
               {PANEL_TABS.map((tab) => (
                 <TabsTrigger
                   key={tab.value}
                   value={tab.value}
-                  className="relative rounded-none h-8 px-3 text-[12px] font-medium shrink-0 shadow-none bg-transparent border-0
+                  className="relative rounded-t-md rounded-b-none h-9 px-3.5 text-[13px] font-semibold shrink-0 shadow-none bg-transparent border-0
                     text-muted-foreground hover:text-foreground transition-colors duration-150
-                    data-[state=active]:text-primary data-[state=active]:font-semibold data-[state=active]:bg-transparent
-                    after:absolute after:bottom-0 after:left-0 after:right-0 after:h-[2px] after:rounded-t after:bg-transparent
-                    data-[state=active]:after:bg-primary"
+                    data-[state=active]:text-primary data-[state=active]:font-extrabold data-[state=active]:bg-transparent
+                    after:absolute after:bottom-0 after:left-0 after:right-0 after:h-[2.5px] after:rounded-t after:bg-transparent
+                    data-[state=active]:after:bg-[var(--accent-strong)]"
                 >
                   {/* Show short label on mobile to fit more tabs */}
                   <span className="sm:hidden">{tab.shortLabel}</span>

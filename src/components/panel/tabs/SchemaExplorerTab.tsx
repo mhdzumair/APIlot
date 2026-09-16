@@ -153,19 +153,19 @@ export function SchemaExplorerTab() {
           <div className="flex items-center gap-2">
             <Label className="text-xs text-muted-foreground">Authentication</Label>
             {authType !== 'none' && authValue && (
-              <span className="text-[10px] text-emerald-500 bg-emerald-500/10 px-1.5 py-0.5 rounded font-medium">
+              <span className="text-[11px] font-mono font-bold bg-[var(--ok-bg)] text-[var(--ok)] px-1.5 py-0.5 rounded-[6px]">
                 ✓ token set
               </span>
             )}
           </div>
-          <div className="flex gap-2 items-start">
+          <div className="flex gap-2.5 items-start">
             <Select
               value={authType}
               onValueChange={(v) =>
                 setAuth(v as typeof authType, authValue, authHeader)
               }
             >
-              <SelectTrigger className="h-8 text-xs w-36 shrink-0">
+              <SelectTrigger className="h-8 text-xs w-36 shrink-0 rounded-[9px]">
                 <SelectValue>{authTypeLabel[authType]}</SelectValue>
               </SelectTrigger>
               <SelectContent>
@@ -180,15 +180,15 @@ export function SchemaExplorerTab() {
               <div className="flex flex-col gap-1.5 flex-1">
                 {(authType === 'apikey' || authType === 'custom') && (
                   <Input
-                    className="h-8 text-xs"
+                    className="h-8 text-xs rounded-[9px]"
                     placeholder="Header name (e.g. X-Api-Key)"
                     value={authHeader}
                     onChange={(e) => setAuth(authType, authValue, e.target.value)}
                   />
                 )}
                 <Input
-                  className="h-8 text-xs font-mono"
-                  placeholder={authType === 'bearer' ? 'Token value' : 'Header value'}
+                  className="h-8 text-xs font-mono tracking-[0.08em] rounded-[9px]"
+                  placeholder={authType === 'bearer' ? 'Paste token…' : 'Header value'}
                   value={authValue}
                   type="password"
                   onChange={(e) => setAuth(authType, e.target.value, authHeader)}
@@ -200,18 +200,25 @@ export function SchemaExplorerTab() {
         </div>
 
         {/* Load button */}
-        <Button
-          size="sm"
-          className="h-8 text-xs self-start"
-          onClick={() => void handleLoadSchema()}
-          disabled={loading || !endpointInput.trim()}
-        >
-          {loading ? 'Loading…' : 'Load Schema'}
-        </Button>
+        <div className="flex items-center gap-2.5">
+          <Button
+            size="sm"
+            className="h-8 text-xs self-start rounded-[9px] font-bold bg-[var(--accent-strong)] text-[var(--accent-on)] hover:bg-[var(--accent-strong)]/90"
+            onClick={() => void handleLoadSchema()}
+            disabled={loading || !endpointInput.trim()}
+          >
+            {loading ? 'Loading…' : 'Load Schema'}
+          </Button>
+          {schema && !loading && (
+            <span className="text-xs text-[var(--text3)]">
+              {schema.queries.length + schema.mutations.length + schema.subscriptions.length + schema.types.length} definitions
+            </span>
+          )}
+        </div>
 
         {/* Error */}
         {error && (
-          <p className="text-xs text-destructive bg-destructive/10 rounded px-2 py-1.5">
+          <p className="text-xs text-[var(--err)] bg-[var(--err-bg)] rounded-[9px] px-2 py-1.5">
             {error}
           </p>
         )}

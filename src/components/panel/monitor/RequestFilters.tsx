@@ -21,33 +21,33 @@ const STATUS_OPTIONS: { value: FilterStatus; label: string; activeClass: string 
   {
     value: 'all',
     label: 'Any',
-    activeClass: 'bg-primary/15 text-primary ring-1 ring-primary/30',
+    activeClass: 'bg-primary/15 text-primary border-primary/30',
   },
   {
     value: 'success',
     label: '2xx',
-    activeClass: 'bg-emerald-500/15 text-emerald-400 ring-1 ring-emerald-500/30',
+    activeClass: 'bg-[var(--ok-bg)] text-[var(--ok)] border-[var(--ok)]/30',
   },
   {
     value: 'error',
     label: '4xx+',
-    activeClass: 'bg-red-500/15 text-red-400 ring-1 ring-red-500/30',
+    activeClass: 'bg-[var(--err-bg)] text-[var(--err)] border-[var(--err)]/30',
   },
   {
     value: 'pending',
     label: '⏳',
-    activeClass: 'bg-amber-500/15 text-amber-400 ring-1 ring-amber-500/30',
+    activeClass: 'bg-[var(--warn-bg)] text-[var(--warn)] border-[var(--warn)]/30',
   },
 ];
 
 const METHODS = ['ALL', 'GET', 'POST', 'PUT', 'PATCH', 'DELETE'];
 
 const METHOD_STYLES: Record<string, string> = {
-  GET:    'text-emerald-400',
-  POST:   'text-blue-400',
-  PUT:    'text-amber-400',
-  PATCH:  'text-amber-400',
-  DELETE: 'text-red-400',
+  GET:    'bg-[var(--m-get-bg)] text-[var(--m-get-fg)] border-[var(--m-get-fg)]/25',
+  POST:   'bg-[var(--m-post-bg)] text-[var(--m-post-fg)] border-[var(--m-post-fg)]/25',
+  PUT:    'bg-[var(--m-put-bg)] text-[var(--m-put-fg)] border-[var(--m-put-fg)]/25',
+  PATCH:  'bg-[var(--m-patch-bg)] text-[var(--m-patch-fg)] border-[var(--m-patch-fg)]/25',
+  DELETE: 'bg-[var(--m-del-bg)] text-[var(--m-del-fg)] border-[var(--m-del-fg)]/25',
 };
 
 // ---------------------------------------------------------------------------
@@ -65,111 +65,102 @@ export function RequestFilters() {
     filters.method !== 'ALL';
 
   return (
-    <div className="flex flex-col border-b border-border/50 shrink-0 bg-card/20">
-      {/* Row 1: search + type pills */}
-      <div className="flex items-center gap-1.5 px-2.5 py-1.5">
-        {/* Search */}
-        <div className="relative flex-1 min-w-0">
-          <svg
-            className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-muted-foreground/55 pointer-events-none"
-            fill="none" viewBox="0 0 16 16" stroke="currentColor" strokeWidth="1.5"
-          >
-            <circle cx="7" cy="7" r="4.5"/>
-            <path d="m10.5 10.5 2.5 2.5" strokeLinecap="round"/>
-          </svg>
-          <Input
-            placeholder="Filter by URL, operation, method…"
-            value={filters.search}
-            onChange={(e) => setFilters({ search: e.target.value })}
-            className="h-6 text-[11px] pl-6 bg-muted/30 border-border/40 hover:border-border focus:border-primary/50 placeholder:text-muted-foreground/55"
-          />
+    <div className="flex flex-col gap-2.5 border-b border-border/50 shrink-0 bg-card/20 px-3.5 py-2.5">
+      {/* Search */}
+      <div className="relative">
+        <svg
+          className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground/55 pointer-events-none"
+          fill="none" viewBox="0 0 16 16" stroke="currentColor" strokeWidth="1.5"
+        >
+          <circle cx="7" cy="7" r="4.5"/>
+          <path d="m10.5 10.5 2.5 2.5" strokeLinecap="round"/>
+        </svg>
+        <Input
+          placeholder="Filter by URL, operation, method…"
+          value={filters.search}
+          onChange={(e) => setFilters({ search: e.target.value })}
+          className="h-8 text-[12px] pl-9 rounded-[9px] bg-muted/30 border-border/40 hover:border-border focus-visible:border-primary/50 placeholder:text-muted-foreground/55"
+        />
+      </div>
+
+      {/* Filter chip row — label + chips inline, single non-wrapping scrollable row */}
+      <div className="flex items-center gap-5 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        {/* Type — segmented control */}
+        <div className="flex items-center gap-2 shrink-0">
+          <span className="text-[12px] text-muted-foreground select-none font-semibold">Type</span>
+          <div className="flex items-center gap-0.5 bg-[var(--surface2)] rounded-[9px] p-[3px]">
+            {TYPE_OPTIONS.map((opt) => (
+              <button
+                key={opt.value}
+                title={opt.title}
+                className={cn(
+                  'px-2.5 py-1 rounded-md text-[12px] font-medium transition-colors whitespace-nowrap',
+                  filters.type === opt.value
+                    ? 'bg-card text-foreground shadow-sm'
+                    : 'text-muted-foreground hover:text-foreground'
+                )}
+                onClick={() => setFilters({ type: opt.value })}
+              >
+                {opt.label}
+              </button>
+            ))}
+          </div>
         </div>
 
-        {/* Type pills */}
-        <div className="flex items-center gap-0.5 shrink-0">
-          {TYPE_OPTIONS.map((opt) => (
-            <button
-              key={opt.value}
-              title={opt.title}
-              className={cn(
-                'px-1.5 py-0.5 rounded text-[10px] font-medium transition-colors',
-                filters.type === opt.value
-                  ? 'bg-primary/15 text-primary ring-1 ring-primary/30'
-                  : 'text-foreground/65 hover:text-foreground hover:bg-muted/40'
-              )}
-              onClick={() => setFilters({ type: opt.value })}
-            >
-              {opt.label}
-            </button>
-          ))}
+        {/* Status — pill chips */}
+        <div className="flex items-center gap-2 shrink-0">
+          <span className="text-[12px] text-muted-foreground select-none font-semibold">Status</span>
+          <div className="flex items-center gap-1">
+            {STATUS_OPTIONS.map((opt) => (
+              <button
+                key={opt.value}
+                className={cn(
+                  'px-2.5 py-1 rounded-full text-[12px] font-medium transition-colors tabular-nums border whitespace-nowrap',
+                  filters.status === opt.value
+                    ? opt.activeClass
+                    : 'text-muted-foreground border-transparent hover:text-foreground hover:bg-muted/40'
+                )}
+                onClick={() => setFilters({ status: opt.value })}
+              >
+                {opt.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Method — pill chips */}
+        <div className="flex items-center gap-2 shrink-0">
+          <span className="text-[12px] text-muted-foreground select-none font-semibold">Method</span>
+          <div className="flex items-center gap-1">
+            {METHODS.map((m) => (
+              <button
+                key={m}
+                className={cn(
+                  'px-2.5 py-1 rounded-full text-[12px] font-mono font-medium transition-colors shrink-0 border whitespace-nowrap',
+                  filters.method === m
+                    ? m === 'ALL'
+                      ? 'bg-primary/15 text-primary border-primary/30'
+                      : (METHOD_STYLES[m] ?? 'text-foreground border-border')
+                    : 'text-muted-foreground border-transparent hover:text-foreground hover:bg-muted/40'
+                )}
+                onClick={() => setFilters({ method: m })}
+              >
+                {m}
+              </button>
+            ))}
+          </div>
         </div>
 
         {/* Clear */}
         {hasActiveFilters && (
           <button
-            className="shrink-0 h-5 w-5 flex items-center justify-center rounded text-foreground/65 hover:text-foreground hover:bg-muted/40 transition-colors text-[10px]"
+            className="shrink-0 h-6 px-2 flex items-center justify-center rounded-full text-muted-foreground hover:text-foreground hover:bg-muted/40 transition-colors text-[12px] font-medium whitespace-nowrap"
             onClick={() => setFilters({ search: '', type: 'all', status: 'all', method: 'ALL' })}
             title="Clear all filters"
           >
-            ✕
+            ✕ Clear
           </button>
         )}
-      </div>
-
-      {/* Row 2: status + method */}
-      <div className="flex items-center gap-1.5 px-2.5 pb-1.5">
-        {/* Status label */}
-        <span className="text-[10px] text-muted-foreground shrink-0 select-none font-medium">
-          Status
-        </span>
-
-        {/* Status pills */}
-        <div className="flex items-center gap-0.5">
-          {STATUS_OPTIONS.map((opt) => (
-            <button
-              key={opt.value}
-              className={cn(
-                'px-1.5 py-px rounded text-[10px] font-medium transition-colors tabular-nums',
-                filters.status === opt.value
-                  ? opt.activeClass
-                  : 'text-foreground/65 hover:text-foreground hover:bg-muted/40'
-              )}
-              onClick={() => setFilters({ status: opt.value })}
-            >
-              {opt.label}
-            </button>
-          ))}
-        </div>
-
-        <div className="h-3 w-px bg-border/40 shrink-0 mx-0.5" />
-
-        {/* Method label */}
-        <span className="text-[10px] text-muted-foreground shrink-0 select-none font-medium">
-          Method
-        </span>
-
-        {/* Method pills */}
-        <div className="flex items-center gap-0.5 overflow-x-auto">
-          {METHODS.map((m) => (
-            <button
-              key={m}
-              className={cn(
-                'px-1.5 py-px rounded text-[10px] font-mono font-medium transition-colors shrink-0',
-                filters.method === m
-                  ? cn(
-                      'ring-1',
-                      m === 'ALL'
-                        ? 'bg-primary/15 text-primary ring-primary/30'
-                        : `bg-muted ${METHOD_STYLES[m] ?? 'text-foreground'} ring-border`
-                    )
-                  : 'text-foreground/65 hover:text-foreground hover:bg-muted/40'
-              )}
-              onClick={() => setFilters({ method: m })}
-            >
-              {m}
-            </button>
-          ))}
-        </div>
       </div>
     </div>
   );

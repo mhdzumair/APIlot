@@ -79,7 +79,7 @@ export function EndpointSelector({ value, onChange, onRequestSelected }: Endpoin
             value={detectedEndpoints.includes(value) ? value : '__manual__'}
             onValueChange={handleSelectChange}
           >
-            <SelectTrigger className="h-8 text-xs">
+            <SelectTrigger className="h-8 text-xs font-mono rounded-[9px] w-full">
               <SelectValue placeholder="Select a detected endpoint…" />
             </SelectTrigger>
             <SelectContent>
@@ -102,7 +102,7 @@ export function EndpointSelector({ value, onChange, onRequestSelected }: Endpoin
             {detectedEndpoints.length > 0 ? 'Or enter manually' : 'GraphQL endpoint URL'}
           </Label>
           <Input
-            className="h-8 text-xs font-mono"
+            className="h-8 text-xs font-mono rounded-[9px]"
             placeholder="https://example.com/graphql"
             value={value}
             onChange={(e) => onChange(e.target.value)}

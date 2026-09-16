@@ -90,7 +90,7 @@ function TypeFieldNode({ field, allTypes, depth, maxDepth, visited }: TypeFieldN
           {isExpandable ? (expanded ? '▼' : '▶') : isCircular ? '↺' : '·'}
         </span>
         <span className="font-mono text-foreground">{field.name}</span>
-        <span className="text-[10px] text-blue-500 dark:text-blue-400 ml-1 shrink-0">
+        <span className="text-[10px] font-mono text-[var(--t-rest-fg)] ml-1 shrink-0">
           {field.type}
         </span>
         {isCircular && (
@@ -163,43 +163,55 @@ export function SchemaViewer({ schema, onBuildOperation }: SchemaViewerProps) {
         placeholder="Search operations and types…"
       />
 
-      <Tabs defaultValue="queries" className="flex flex-col flex-1 overflow-hidden">
-        <TabsList className="shrink-0 h-8 text-xs">
-          <TabsTrigger value="queries" className="text-xs">
+      <Tabs defaultValue="queries" className="flex flex-col flex-1 overflow-hidden gap-2">
+        <TabsList className="shrink-0 h-auto self-start text-xs bg-[var(--surface2)] rounded-[10px] p-[3px] gap-[3px]">
+          <TabsTrigger
+            value="queries"
+            className="text-xs rounded-[8px] data-[state=active]:bg-card data-[state=active]:shadow-sm data-[state=active]:text-foreground"
+          >
             Queries
             {schema.queries.length > 0 && (
-              <Badge variant="secondary" className="ml-1 text-[10px] px-1 py-0 h-4">
+              <Badge variant="secondary" className="ml-1 text-[10px] px-1 py-0 h-4 rounded-full">
                 {schema.queries.length}
               </Badge>
             )}
           </TabsTrigger>
-          <TabsTrigger value="mutations" className="text-xs">
+          <TabsTrigger
+            value="mutations"
+            className="text-xs rounded-[8px] data-[state=active]:bg-card data-[state=active]:shadow-sm data-[state=active]:text-foreground"
+          >
             Mutations
             {schema.mutations.length > 0 && (
-              <Badge variant="secondary" className="ml-1 text-[10px] px-1 py-0 h-4">
+              <Badge variant="secondary" className="ml-1 text-[10px] px-1 py-0 h-4 rounded-full">
                 {schema.mutations.length}
               </Badge>
             )}
           </TabsTrigger>
-          <TabsTrigger value="subscriptions" className="text-xs">
+          <TabsTrigger
+            value="subscriptions"
+            className="text-xs rounded-[8px] data-[state=active]:bg-card data-[state=active]:shadow-sm data-[state=active]:text-foreground"
+          >
             Subscriptions
             {schema.subscriptions.length > 0 && (
-              <Badge variant="secondary" className="ml-1 text-[10px] px-1 py-0 h-4">
+              <Badge variant="secondary" className="ml-1 text-[10px] px-1 py-0 h-4 rounded-full">
                 {schema.subscriptions.length}
               </Badge>
             )}
           </TabsTrigger>
-          <TabsTrigger value="types" className="text-xs">
+          <TabsTrigger
+            value="types"
+            className="text-xs rounded-[8px] data-[state=active]:bg-card data-[state=active]:shadow-sm data-[state=active]:text-foreground"
+          >
             Types
             {schema.types.length > 0 && (
-              <Badge variant="secondary" className="ml-1 text-[10px] px-1 py-0 h-4">
+              <Badge variant="secondary" className="ml-1 text-[10px] px-1 py-0 h-4 rounded-full">
                 {schema.types.length}
               </Badge>
             )}
           </TabsTrigger>
         </TabsList>
 
-        <TabsContent value="queries" className="flex-1 overflow-y-auto mt-1">
+        <TabsContent value="queries" className="flex-1 overflow-y-auto mt-1 rounded-[12px] border border-border">
           <OperationList
             items={filteredQueries}
             emptyLabel="No queries"
@@ -209,7 +221,7 @@ export function SchemaViewer({ schema, onBuildOperation }: SchemaViewerProps) {
           />
         </TabsContent>
 
-        <TabsContent value="mutations" className="flex-1 overflow-y-auto mt-1">
+        <TabsContent value="mutations" className="flex-1 overflow-y-auto mt-1 rounded-[12px] border border-border">
           <OperationList
             items={filteredMutations}
             emptyLabel="No mutations"
@@ -219,7 +231,7 @@ export function SchemaViewer({ schema, onBuildOperation }: SchemaViewerProps) {
           />
         </TabsContent>
 
-        <TabsContent value="subscriptions" className="flex-1 overflow-y-auto mt-1">
+        <TabsContent value="subscriptions" className="flex-1 overflow-y-auto mt-1 rounded-[12px] border border-border">
           <OperationList
             items={filteredSubscriptions}
             emptyLabel="No subscriptions"
@@ -229,7 +241,7 @@ export function SchemaViewer({ schema, onBuildOperation }: SchemaViewerProps) {
           />
         </TabsContent>
 
-        <TabsContent value="types" className="flex-1 overflow-y-auto mt-1">
+        <TabsContent value="types" className="flex-1 overflow-y-auto mt-1 rounded-[12px] border border-border">
           <TypeList types={filteredTypes} allTypes={schema.types} emptyLabel="No custom types" />
         </TabsContent>
       </Tabs>
@@ -307,7 +319,7 @@ function OperationItem({ item, operationType, schema, onBuildOperation }: Operat
           {hasContent ? (expanded ? '▼' : '▶') : ''}
         </span>
         <span className="text-xs font-mono font-medium text-foreground">{item.name}</span>
-        <span className="text-xs text-blue-500 dark:text-blue-400 ml-1">{item.type}</span>
+        <span className="text-xs font-mono text-[var(--t-rest-fg)] ml-1">{item.type}</span>
         {item.description && (
           <span className="text-[10px] text-muted-foreground truncate ml-2 hidden sm:block">
             {item.description}
@@ -339,10 +351,10 @@ function OperationItem({ item, operationType, schema, onBuildOperation }: Operat
               </p>
               {(item.args ?? []).map((arg) => (
                 <div key={arg.name} className="flex items-center gap-1 px-1 py-px">
-                  <span className="text-[11px] font-mono text-amber-600 dark:text-amber-400">
+                  <span className="text-[11px] font-mono text-primary">
                     {arg.name}
                   </span>
-                  <span className="text-[10px] text-blue-500 dark:text-blue-400">{arg.type}</span>
+                  <span className="text-[10px] font-mono text-[var(--t-rest-fg)]">{arg.type}</span>
                   {arg.description && (
                     <span className="text-[10px] text-muted-foreground truncate ml-1">
                       — {arg.description}
@@ -359,7 +371,7 @@ function OperationItem({ item, operationType, schema, onBuildOperation }: Operat
               <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">
                 Return Type
               </p>
-              <span className="text-[10px] font-mono px-1.5 py-px rounded bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300 font-medium">
+              <span className="text-[10px] font-mono px-1.5 py-px rounded-[6px] bg-[var(--t-rest-bg)] text-[var(--t-rest-fg)] font-semibold">
                 {baseReturnType}
               </span>
             </div>

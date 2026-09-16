@@ -16,7 +16,6 @@ import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Button } from '@/components/ui/button';
-import { Separator } from '@/components/ui/separator';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -24,16 +23,17 @@ import { Separator } from '@/components/ui/separator';
 
 function SectionHeader({ title }: { title: string }) {
   return (
-    <div className="space-y-1 mb-4">
-      <h3 className="text-sm font-semibold text-foreground">{title}</h3>
-      <Separator />
-    </div>
+    <h2 className="text-sm font-semibold text-foreground border-b border-border pb-2.5 mb-1">
+      {title}
+    </h2>
   );
 }
 
 function SettingRow({ children }: { children: React.ReactNode }) {
   return (
-    <div className="flex items-center justify-between gap-4 py-2">{children}</div>
+    <div className="flex items-center justify-between gap-4 py-2.5 border-b border-border last:border-b-0">
+      {children}
+    </div>
   );
 }
 
@@ -346,7 +346,7 @@ export function SettingsTab() {
     ZOOM_OPTIONS.find((o) => Math.abs(parseFloat(o.value) - panelZoom) < 0.001)?.value ?? '1';
 
   return (
-    <div className="p-4 space-y-8 max-w-2xl mx-auto">
+    <div className="p-5 space-y-[30px] max-w-[720px] mx-auto">
       {/* ------------------------------------------------------------------ */}
       {/* General Settings                                                     */}
       {/* ------------------------------------------------------------------ */}
@@ -354,11 +354,12 @@ export function SettingsTab() {
         <SectionHeader title="General Settings" />
 
         <SettingRow>
-          <Label htmlFor="theme-select" className="text-sm">
-            Theme
-          </Label>
+          <div className="space-y-0.5">
+            <Label htmlFor="theme-select" className="text-sm">Theme</Label>
+            <p className="text-xs text-[var(--text3)]">Light, dark, or match the OS setting</p>
+          </div>
           <Select value={settings.theme} onValueChange={handleThemeChange}>
-            <SelectTrigger id="theme-select" size="sm" className="w-36">
+            <SelectTrigger id="theme-select" size="sm" className="w-36 rounded-[8px]">
               <SelectValue placeholder="Select theme" />
             </SelectTrigger>
             <SelectContent>
@@ -370,11 +371,12 @@ export function SettingsTab() {
         </SettingRow>
 
         <SettingRow>
-          <Label htmlFor="log-profile-select" className="text-sm">
-            Log Profile
-          </Label>
+          <div className="space-y-0.5">
+            <Label htmlFor="log-profile-select" className="text-sm">Log Profile</Label>
+            <p className="text-xs text-[var(--text3)]">How much detail is captured per request</p>
+          </div>
           <Select value={settings.logProfile} onValueChange={handleLogProfileChange}>
-            <SelectTrigger id="log-profile-select" size="sm" className="w-36">
+            <SelectTrigger id="log-profile-select" size="sm" className="w-36 rounded-[8px]">
               <SelectValue placeholder="Select profile" />
             </SelectTrigger>
             <SelectContent>
@@ -388,10 +390,10 @@ export function SettingsTab() {
         <SettingRow>
           <div className="space-y-0.5">
             <Label htmlFor="zoom-select" className="text-sm">Panel Zoom</Label>
-            <p className="text-xs text-muted-foreground">Scale the entire DevTools panel layout</p>
+            <p className="text-xs text-[var(--text3)]">Scale the entire DevTools panel layout</p>
           </div>
           <Select value={zoomSelectValue} onValueChange={handleZoomChange}>
-            <SelectTrigger id="zoom-select" size="sm" className="w-36">
+            <SelectTrigger id="zoom-select" size="sm" className="w-36 rounded-[8px]">
               <SelectValue placeholder="100%" />
             </SelectTrigger>
             <SelectContent>
@@ -432,28 +434,28 @@ export function SettingsTab() {
         <SectionHeader title="Monitoring Exclusions" />
 
         <div className="space-y-3">
-          <p className="text-xs text-muted-foreground">
-            Requests whose URL contains any of these substrings will be completely
-            skipped by the interceptor — no hold, no logging. One pattern per line.
-            Useful for media streams, AES key endpoints, or anti-bot-sensitive URLs.
+          <p className="text-[13px] text-[var(--text3)]">
+            Requests whose URL contains any of these substrings are skipped entirely by
+            the interceptor — no hold, no logging. One pattern per line. Useful for media
+            streams, AES key endpoints, or anti-bot-sensitive URLs.
           </p>
           <Textarea
             value={excludeText}
             onChange={(e) => setExcludeText(e.target.value)}
+            rows={6}
             placeholder={[
               '.m3u8',
               '.ts',
               'videokey.php',
               'segment',
             ].join('\n')}
-            className="text-xs font-mono resize-none h-28"
+            className="text-xs font-mono leading-[1.7] resize-none h-28 rounded-[10px]"
             spellCheck={false}
           />
           <Button
-            variant="outline"
             size="sm"
             onClick={handleExcludeSave}
-            className="text-xs"
+            className="text-xs font-bold rounded-[9px] mt-1"
           >
             Save Exclusions
           </Button>

@@ -65,8 +65,8 @@ export function RequestList({ requests }: RequestListProps) {
   if (requests.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center h-full py-16 gap-2 text-muted-foreground select-none">
-        <p className="text-sm font-medium">No requests captured yet</p>
-        <p className="text-xs">Navigate to a page to start capturing requests</p>
+        <p className="text-[14px] font-semibold text-foreground/80">No requests captured yet</p>
+        <p className="text-[12px]">Navigate to a page to start capturing requests</p>
       </div>
     );
   }
@@ -79,13 +79,13 @@ export function RequestList({ requests }: RequestListProps) {
         <div key={group.pageGroupId}>
           {/* Group header — only show if there are multiple groups */}
           {groups.length > 1 && (
-            <div className="sticky top-0 z-10 px-3 py-1 text-[10px] font-medium text-muted-foreground bg-muted/80 border-b flex items-center gap-2">
+            <div className="sticky top-0 z-10 px-3.5 py-1.5 text-[11px] font-semibold text-muted-foreground bg-[var(--surface2)] border-b flex items-center gap-2">
               <span>
                 {group.pageGroupId === '__ungrouped__'
                   ? `Session ${groupIndex + 1}`
                   : `Session ${groupIndex + 1}`}
               </span>
-              <span className="ml-auto">{group.requests.length} requests</span>
+              <span className="ml-auto font-normal tabular-nums">{group.requests.length} requests</span>
             </div>
           )}
           {group.requests.map((request) => (

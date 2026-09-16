@@ -17,14 +17,22 @@ import { buildEndpointStats } from '@/shared/endpointStats';
 function recommendationBadgeClass(type: PerformanceRecommendation['type']): string {
   switch (type) {
     case 'error':
-      return 'bg-red-500/15 text-red-700 dark:text-red-400 border-red-500/30';
+      return 'bg-[var(--err-bg)] text-[var(--err)] border-transparent';
     case 'warning':
-      return 'bg-yellow-500/15 text-yellow-700 dark:text-yellow-400 border-yellow-500/30';
+      return 'bg-[var(--warn-bg)] text-[var(--warn)] border-transparent';
     case 'success':
-      return 'bg-green-500/15 text-green-700 dark:text-green-400 border-green-500/30';
+      return 'bg-[var(--ok-bg)] text-[var(--ok)] border-transparent';
     default:
-      return 'bg-blue-500/15 text-blue-700 dark:text-blue-400 border-blue-500/30';
+      return 'bg-muted text-muted-foreground border-transparent';
   }
+}
+
+/** Per-type tag colors shared by the endpoint table, slowest requests, and playback badges. */
+function requestTypeTagClass(requestType: 'graphql' | 'rest' | string): string {
+  if (requestType === 'graphql') {
+    return 'bg-[var(--t-gql-bg)] text-[var(--t-gql-fg)] border-transparent';
+  }
+  return 'bg-[var(--t-rest-bg)] text-[var(--t-rest-fg)] border-transparent';
 }
 
 interface SummaryCardProps {
@@ -37,16 +45,16 @@ interface SummaryCardProps {
 function SummaryCard({ label, value, sub, accent = 'default' }: SummaryCardProps) {
   const accentClass = {
     default: 'text-foreground',
-    success: 'text-green-600 dark:text-green-400',
-    error: 'text-red-600 dark:text-red-400',
-    warning: 'text-yellow-600 dark:text-yellow-400',
+    success: 'text-[var(--ok)]',
+    error: 'text-[var(--err)]',
+    warning: 'text-[var(--warn)]',
   }[accent];
 
   return (
-    <div className="rounded-md border bg-card px-4 py-3 space-y-0.5">
-      <div className="text-[10px] text-muted-foreground uppercase tracking-wide">{label}</div>
-      <div className={`text-2xl font-bold tabular-nums ${accentClass}`}>{value}</div>
-      {sub && <div className="text-[10px] text-muted-foreground">{sub}</div>}
+    <div className="rounded-xl border border-border bg-card px-4 py-3.5 space-y-1">
+      <div className="text-[10px] text-[var(--text3)] uppercase tracking-wide font-semibold">{label}</div>
+      <div className={`text-[34px] leading-tight font-extrabold tabular-nums ${accentClass}`}>{value}</div>
+      {sub && <div className="text-[10px] text-[var(--text3)]">{sub}</div>}
     </div>
   );
 }
@@ -119,15 +127,15 @@ function ResponseTimeChart({ metrics }: { metrics: PerformanceMetrics }) {
 
   if (metrics.timeSeriesData.length === 0) {
     return (
-      <div className="flex items-center justify-center h-32 text-xs text-muted-foreground border rounded-md">
+      <div className="flex items-center justify-center h-32 text-xs text-[var(--text3)] border border-border rounded-xl">
         No time series data yet
       </div>
     );
   }
 
   return (
-    <div className="rounded-md border p-3">
-      <div className="text-xs font-medium mb-2">Response Time History</div>
+    <div className="rounded-xl border border-border p-3">
+      <div className="text-xs font-semibold mb-2">Response Time History</div>
       <div style={{ height: '120px' }}>
         <canvas ref={canvasRef} />
       </div>
@@ -205,23 +213,25 @@ function EndpointBreakdownTable({ stats }: { stats: EndpointStat[] }) {
 
   if (stats.length === 0) {
     return (
-      <div className="rounded-md border flex items-center justify-center min-h-[72px] px-3 text-xs text-muted-foreground">
+      <div className="rounded-xl border border-border flex items-center justify-center min-h-[72px] px-3 text-xs text-[var(--text3)]">
         No completed requests with timing yet — trigger API calls while monitoring is on.
       </div>
     );
   }
 
+  const maxPercent = Math.max(...sorted.map((r) => r.percentOfTotalTime), 1);
+
   return (
-    <div className="rounded-md border overflow-x-auto">
+    <div className="rounded-xl border border-border overflow-x-auto">
       <table className="w-full text-[10px] text-left border-collapse">
         <thead>
-          <tr className="border-b bg-muted/30">
+          <tr className="border-b border-border bg-[var(--surface2)]">
             {ENDPOINT_SORT_KEYS.map((k) => (
               <th key={k} className="px-2 py-1.5 font-medium whitespace-nowrap">
                 <button
                   type="button"
                   onClick={() => onHeaderClick(k)}
-                  className="inline-flex items-center gap-0.5 hover:text-foreground text-muted-foreground"
+                  className="inline-flex items-center gap-0.5 hover:text-foreground text-[var(--text3)]"
                 >
                   {headerLabel(k)}
                   <span className="text-[9px] opacity-70 tabular-nums">{sortIndicator(k)}</span>
@@ -230,7 +240,7 @@ function EndpointBreakdownTable({ stats }: { stats: EndpointStat[] }) {
             ))}
           </tr>
         </thead>
-        <tbody className="divide-y">
+        <tbody className="divide-y divide-border">
           {sorted.map((row) => (
             <tr key={row.groupKey} className="hover:bg-muted/20">
               <td className="px-2 py-1.5 max-w-[140px] truncate" title={row.displayName}>
@@ -239,11 +249,7 @@ function EndpointBreakdownTable({ stats }: { stats: EndpointStat[] }) {
               <td className="px-2 py-1.5">
                 <Badge
                   variant="outline"
-                  className={`text-[9px] px-1 py-0 shrink-0 ${
-                    row.requestType === 'graphql'
-                      ? 'border-pink-500/40 text-pink-600'
-                      : 'border-blue-500/40 text-blue-600'
-                  }`}
+                  className={`rounded-full text-[9px] px-1.5 py-0 shrink-0 ${requestTypeTagClass(row.requestType)}`}
                 >
                   {row.requestType.toUpperCase()}
                 </Badge>
@@ -255,7 +261,17 @@ function EndpointBreakdownTable({ stats }: { stats: EndpointStat[] }) {
               <td className="px-2 py-1.5 tabular-nums">{row.p50Ms}ms</td>
               <td className="px-2 py-1.5 tabular-nums">{row.p95Ms}ms</td>
               <td className="px-2 py-1.5 tabular-nums">{row.sumMs}ms</td>
-              <td className="px-2 py-1.5 tabular-nums">{row.percentOfTotalTime}%</td>
+              <td className="px-2 py-1.5 tabular-nums">
+                <div className="flex items-center gap-1.5 min-w-[64px]">
+                  <div className="h-1.5 flex-1 rounded-full bg-muted overflow-hidden">
+                    <div
+                      className="h-full rounded-full bg-[var(--accent-strong)]"
+                      style={{ width: `${Math.max(4, (row.percentOfTotalTime / maxPercent) * 100)}%` }}
+                    />
+                  </div>
+                  <span className="shrink-0">{row.percentOfTotalTime}%</span>
+                </div>
+              </td>
             </tr>
           ))}
         </tbody>
@@ -372,14 +388,14 @@ function FilterBar({
   statusFilter: StatusFilter; setStatusFilter: (v: StatusFilter) => void;
   timeRange: TimeRange; setTimeRange: (v: TimeRange) => void;
 }) {
-  const btnBase = 'px-2 py-0.5 rounded text-[10px] font-medium transition-colors';
-  const active = 'bg-foreground text-background';
-  const inactive = 'text-muted-foreground hover:text-foreground hover:bg-muted';
+  const btnBase = 'px-2 py-0.5 rounded-full text-[10px] font-medium transition-colors';
+  const active = 'bg-[var(--accent-strong)] text-[var(--accent-on)]';
+  const inactive = 'text-[var(--text3)] hover:text-foreground hover:bg-muted';
 
   return (
     <div className="flex flex-wrap gap-x-4 gap-y-1.5 items-center text-[10px]">
       <div className="flex items-center gap-1">
-        <span className="text-muted-foreground uppercase tracking-wide mr-0.5">Type</span>
+        <span className="text-[var(--text3)] uppercase tracking-wide mr-0.5">Type</span>
         {(['all', 'graphql', 'rest', 'static'] as TypeFilter[]).map((v) => (
           <button key={v} type="button"
             className={`${btnBase} ${typeFilter === v ? active : inactive}`}
@@ -390,7 +406,7 @@ function FilterBar({
         ))}
       </div>
       <div className="flex items-center gap-1">
-        <span className="text-muted-foreground uppercase tracking-wide mr-0.5">Status</span>
+        <span className="text-[var(--text3)] uppercase tracking-wide mr-0.5">Status</span>
         {(['all', 'success', 'error'] as StatusFilter[]).map((v) => (
           <button key={v} type="button"
             className={`${btnBase} ${statusFilter === v ? active : inactive}`}
@@ -401,7 +417,7 @@ function FilterBar({
         ))}
       </div>
       <div className="flex items-center gap-1">
-        <span className="text-muted-foreground uppercase tracking-wide mr-0.5">Time</span>
+        <span className="text-[var(--text3)] uppercase tracking-wide mr-0.5">Time</span>
         {(['all', '30m', '5m', '1m'] as TimeRange[]).map((v) => (
           <button key={v} type="button"
             className={`${btnBase} ${timeRange === v ? active : inactive}`}
@@ -478,20 +494,25 @@ export function AnalyticsDashboard() {
   return (
     <div className="flex flex-col gap-4 p-4 h-full overflow-y-auto">
       {/* Header */}
-      <div className="flex items-center justify-between shrink-0">
+      <div className="flex items-end gap-3 shrink-0">
         <div>
-          <h2 className="text-sm font-semibold">Analytics</h2>
-          <p className="text-xs text-muted-foreground">
+          <h2 className="text-[22px] font-extrabold leading-none">Analytics</h2>
+          <p className="text-xs text-[var(--text3)] mt-1">
             {filteredLog.length !== requestLog.length
               ? `${filteredLog.length} of ${requestLog.length} requests (filtered)`
               : `${requestLog.length} requests captured`}
           </p>
         </div>
-        <div className="flex gap-2">
-          <Button variant="outline" size="sm" onClick={handleExport} disabled={!metrics} className="h-7 text-xs">
+        <div className="ml-auto flex gap-2.5">
+          <Button variant="outline" size="sm" onClick={handleExport} disabled={!metrics} className="h-7 rounded-[9px] text-xs">
             Export
           </Button>
-          <Button variant="outline" size="sm" onClick={handleClearData} className="h-7 text-xs text-red-600 dark:text-red-400">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleClearData}
+            className="h-7 rounded-[9px] text-xs border-[var(--err)] text-[var(--err)] hover:bg-[var(--err-bg)] hover:text-[var(--err)]"
+          >
             Clear
           </Button>
         </div>
@@ -539,16 +560,24 @@ export function AnalyticsDashboard() {
         <SummaryCard
           label="Errors"
           value={metrics ? Math.round((metrics.errorRate / 100) * metrics.totalRequests) : 0}
-          accent={metrics && metrics.errorRate > 5 ? 'error' : 'default'}
+          accent={
+            !metrics
+              ? 'default'
+              : metrics.errorRate > 5
+              ? 'error'
+              : metrics.totalRequests > 0
+              ? 'success'
+              : 'default'
+          }
         />
       </div>
 
       {/* Endpoint breakdown (aggregated across repeated calls) */}
       {metrics && (
-        <div className="rounded-md border shrink-0">
-          <div className="px-3 py-2 border-b bg-muted/30">
-            <div className="text-xs font-medium">Endpoint breakdown</div>
-            <div className="text-[10px] text-muted-foreground mt-0.5">
+        <div className="rounded-xl border border-border shrink-0 overflow-hidden">
+          <div className="px-3 py-2 border-b border-border bg-[var(--surface2)]">
+            <div className="text-xs font-semibold">Endpoint breakdown</div>
+            <div className="text-[10px] text-[var(--text3)] mt-0.5">
               Rolled up by operation or REST route; totals sum response time across calls.
             </div>
           </div>
@@ -563,34 +592,30 @@ export function AnalyticsDashboard() {
 
       {/* Slowest single requests */}
       {metrics && metrics.slowestRequests.length > 0 && (
-        <div className="rounded-md border shrink-0">
-          <div className="px-3 py-2 border-b bg-muted/30">
-            <div className="text-xs font-medium">Slowest single requests</div>
+        <div className="rounded-xl border border-border shrink-0 overflow-hidden">
+          <div className="px-3 py-2 border-b border-border bg-[var(--surface2)]">
+            <div className="text-xs font-semibold">Slowest single requests</div>
           </div>
-          <div className="divide-y">
+          <div className="divide-y divide-border">
             {metrics.slowestRequests.map((req) => (
               <div key={req.id} className="flex items-center justify-between px-3 py-2 text-xs">
                 <div className="flex items-center gap-2 min-w-0">
                   <Badge
                     variant="outline"
-                    className={`text-[9px] px-1 py-0 shrink-0 ${
-                      req.requestType === 'graphql'
-                        ? 'border-pink-500/40 text-pink-600'
-                        : 'border-blue-500/40 text-blue-600'
-                    }`}
+                    className={`rounded-full text-[9px] px-1.5 py-0 shrink-0 ${requestTypeTagClass(req.requestType)}`}
                   >
                     {req.requestType.toUpperCase()}
                   </Badge>
-                  <span className="truncate text-muted-foreground">
+                  <span className="truncate text-[var(--text3)]">
                     {req.operationName ?? req.url ?? 'Unknown'}
                   </span>
                 </div>
                 <span
-                  className={`tabular-nums shrink-0 font-medium ${
+                  className={`tabular-nums shrink-0 font-semibold ${
                     req.responseTime > 3000
-                      ? 'text-red-600 dark:text-red-400'
+                      ? 'text-[var(--err)]'
                       : req.responseTime > 1000
-                      ? 'text-yellow-600 dark:text-yellow-400'
+                      ? 'text-[var(--warn)]'
                       : 'text-foreground'
                   }`}
                 >
@@ -603,21 +628,21 @@ export function AnalyticsDashboard() {
       )}
 
       {/* Recommendations */}
-      <div className="rounded-md border shrink-0">
-        <div className="px-3 py-2 border-b bg-muted/30">
-          <div className="text-xs font-medium">Recommendations</div>
+      <div className="rounded-xl border border-border shrink-0 overflow-hidden">
+        <div className="px-3 py-2 border-b border-border bg-[var(--surface2)]">
+          <div className="text-xs font-semibold">Recommendations</div>
         </div>
-        <div className="divide-y">
+        <div className="divide-y divide-border">
           {recommendations.map((rec, i) => (
             <div key={i} className="flex items-start gap-3 px-3 py-2">
               <span
-                className={`inline-flex items-center rounded border px-1.5 py-0.5 text-[9px] font-medium shrink-0 mt-0.5 ${recommendationBadgeClass(rec.type)}`}
+                className={`inline-flex items-center rounded-full border px-1.5 py-0.5 text-[9px] font-medium shrink-0 mt-0.5 ${recommendationBadgeClass(rec.type)}`}
               >
                 {rec.type}
               </span>
               <div className="min-w-0">
-                <div className="text-xs font-medium">{rec.title}</div>
-                <div className="text-[10px] text-muted-foreground">{rec.message}</div>
+                <div className="text-xs font-semibold">{rec.title}</div>
+                <div className="text-[10px] text-[var(--text3)]">{rec.message}</div>
               </div>
             </div>
           ))}

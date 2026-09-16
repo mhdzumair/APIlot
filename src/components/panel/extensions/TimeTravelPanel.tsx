@@ -20,6 +20,14 @@ function formatTimestamp(iso: string): string {
   return new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 }
 
+/** Per-type tag colors — mirrors the pairing used in AnalyticsDashboard's endpoint table. */
+function requestTypeTagClass(requestType: string): string {
+  if (requestType === 'graphql') {
+    return 'bg-[var(--t-gql-bg)] text-[var(--t-gql-fg)] border-transparent';
+  }
+  return 'bg-[var(--t-rest-bg)] text-[var(--t-rest-fg)] border-transparent';
+}
+
 interface SessionRowProps {
   session: SessionSummary;
   isActive: boolean;
@@ -31,39 +39,51 @@ interface SessionRowProps {
 function SessionRow({ session, isActive, onPlay, onDelete, onExport }: SessionRowProps) {
   return (
     <div
-      className={`flex items-center gap-2 px-3 py-2 border-b last:border-b-0 text-xs ${
+      className={`flex items-center gap-2 px-3 py-2.5 border-b border-border last:border-b-0 text-xs ${
         isActive ? 'bg-primary/5' : 'hover:bg-muted/30'
       }`}
     >
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-1.5">
-          <span className="font-medium truncate">{session.name}</span>
+          <span className="font-semibold truncate">{session.name}</span>
           <Badge
             variant="outline"
-            className={`text-[9px] px-1 py-0 h-4 shrink-0 ${
+            className={`rounded-full text-[9px] px-1.5 py-0 h-4 shrink-0 border-transparent ${
               session.status === 'recording'
-                ? 'border-red-500/40 text-red-600 dark:text-red-400 bg-red-500/10'
-                : 'border-green-500/40 text-green-600 dark:text-green-400 bg-green-500/10'
+                ? 'bg-[var(--err-bg)] text-[var(--err)]'
+                : 'bg-[var(--ok-bg)] text-[var(--ok)]'
             }`}
           >
             {session.status}
           </Badge>
         </div>
-        <div className="text-muted-foreground mt-0.5">
+        <div className="text-[var(--text3)] font-mono mt-0.5">
           {formatTimestamp(session.startTime)} &middot; {session.requestCount} req &middot; {formatDuration(session.duration)}
         </div>
       </div>
-      <div className="flex gap-1 shrink-0">
-        <Button variant="outline" size="sm" className="h-5 px-1.5 text-[10px]" onClick={onPlay} title="Play session">
+      <div className="flex gap-1.5 shrink-0">
+        <Button
+          variant="outline"
+          size="icon"
+          className="h-[30px] w-8 rounded-[9px] text-xs"
+          onClick={onPlay}
+          title="Play session"
+        >
           &#9654;
         </Button>
-        <Button variant="outline" size="sm" className="h-5 px-1.5 text-[10px]" onClick={onExport} title="Export session">
+        <Button
+          variant="outline"
+          size="icon"
+          className="h-[30px] w-8 rounded-[9px] text-xs"
+          onClick={onExport}
+          title="Export session"
+        >
           &#8595;
         </Button>
         <Button
           variant="outline"
-          size="sm"
-          className="h-5 px-1.5 text-[10px] text-red-600 dark:text-red-400"
+          size="icon"
+          className="h-[30px] w-8 rounded-[9px] text-xs border-[var(--err)] text-[var(--err)] hover:bg-[var(--err-bg)] hover:text-[var(--err)]"
           onClick={onDelete}
           title="Delete session"
         >
@@ -297,66 +317,75 @@ export function TimeTravelPanel() {
   return (
     <div className="flex flex-col gap-4 p-4 h-full overflow-y-auto">
       {/* Header */}
-      <div className="flex items-center justify-between shrink-0">
+      <div className="flex items-center gap-3 shrink-0">
         <div>
           <h2 className="text-sm font-semibold">Time Travel Debugging</h2>
-          <p className="text-xs text-muted-foreground">Record and replay API sessions</p>
+          <p className="text-xs text-[var(--text3)]">Record and replay API sessions</p>
         </div>
-        <div className="flex gap-2">
-          <Button variant="outline" size="sm" onClick={handleImportSession} className="h-7 text-xs">
-            Import
+        <div className="ml-auto flex gap-2.5">
+          <Button variant="outline" size="sm" onClick={handleImportSession} className="h-7 rounded-[9px] text-xs">
+            Import Session
           </Button>
-          <Button variant="outline" size="sm" onClick={loadSessions} className="h-7 text-xs">
+          <Button variant="outline" size="sm" onClick={loadSessions} className="h-7 rounded-[9px] text-xs">
             Refresh
           </Button>
         </div>
       </div>
 
       {/* Recording controls */}
-      <div className="rounded-md border shrink-0">
-        <div className="px-3 py-2 border-b bg-muted/30 flex items-center justify-between">
-          <div className="text-xs font-medium">Recording</div>
-          {isRecording && (
-            <div className="flex items-center gap-1.5 text-[10px] text-red-600 dark:text-red-400">
-              <span className="inline-block h-1.5 w-1.5 rounded-full bg-current animate-pulse" />
-              {isPaused ? 'Paused' : 'Recording...'}
-            </div>
-          )}
+      <section className="rounded-xl border border-border shrink-0 overflow-hidden">
+        <div className="px-4 py-3 border-b border-border bg-[var(--surface2)] flex items-center justify-between">
+          <div className="text-xs font-semibold">Recording</div>
+          <span className="text-[var(--text3)] font-mono text-[10px]">
+            {isRecording ? (isPaused ? 'paused' : 'recording…') : 'idle'}
+          </span>
         </div>
-        <div className="px-3 py-3 flex gap-2">
+        <div className="px-4 py-4 flex items-center gap-3.5">
           {!isRecording ? (
-            <Button size="sm" onClick={handleStartRecording} className="h-7 text-xs">
-              &#9679; Start Recording
+            <Button
+              size="sm"
+              onClick={handleStartRecording}
+              className="h-[42px] rounded-[9px] px-[18px] gap-2 bg-[var(--accent-strong)] text-[var(--accent-on)] font-bold hover:bg-[var(--accent-strong)]/90"
+            >
+              <span className="inline-block h-2.5 w-2.5 rounded-full bg-current" />
+              Start Recording
             </Button>
           ) : (
             <>
+              <Button
+                size="sm"
+                onClick={handleStopRecording}
+                className="h-[42px] rounded-[9px] px-[18px] gap-2 bg-[var(--err-bg)] text-[var(--err)] font-bold hover:bg-[var(--err-bg)]/80"
+              >
+                <span className="inline-block h-2.5 w-2.5 rounded-[2px] bg-current" />
+                Stop Recording
+              </Button>
               {!isPaused ? (
-                <Button variant="outline" size="sm" onClick={handlePauseRecording} className="h-7 text-xs">
+                <Button variant="outline" size="sm" onClick={handlePauseRecording} className="h-8 rounded-[9px] text-xs">
                   &#9646;&#9646; Pause
                 </Button>
               ) : (
-                <Button variant="outline" size="sm" onClick={handleResumeRecording} className="h-7 text-xs">
+                <Button variant="outline" size="sm" onClick={handleResumeRecording} className="h-8 rounded-[9px] text-xs">
                   &#9654; Resume
                 </Button>
               )}
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleStopRecording}
-                className="h-7 text-xs text-red-600 dark:text-red-400"
-              >
-                &#9632; Stop
-              </Button>
             </>
           )}
+          <span className="text-xs text-[var(--text3)]">
+            {isRecording
+              ? isPaused
+                ? 'Recording paused — resume to keep capturing traffic.'
+                : 'Capturing API traffic for this session.'
+              : 'Start a session to capture and replay API traffic later.'}
+          </span>
         </div>
-      </div>
+      </section>
 
       {/* Playback panel */}
       {playbackStatus && (
-        <div className="rounded-md border shrink-0 bg-primary/5">
-          <div className="px-3 py-2 border-b flex items-center justify-between">
-            <div className="text-xs font-medium">Playback</div>
+        <div className="rounded-xl border border-border shrink-0 bg-primary/5 overflow-hidden">
+          <div className="px-3 py-2 border-b border-border flex items-center justify-between">
+            <div className="text-xs font-semibold">Playback</div>
             <Button
               variant="ghost"
               size="sm"
@@ -369,28 +398,24 @@ export function TimeTravelPanel() {
           <div className="px-3 py-3 space-y-3">
             {/* Request display */}
             {currentRequest && (
-              <div className="rounded-md border bg-card px-3 py-2 text-xs space-y-1">
+              <div className="rounded-lg border border-border bg-card px-3 py-2 text-xs space-y-1">
                 <div className="flex items-center gap-2">
                   <Badge
                     variant="outline"
-                    className={`text-[9px] px-1 ${
-                      currentRequest.requestType === 'graphql'
-                        ? 'border-pink-500/40 text-pink-600'
-                        : 'border-blue-500/40 text-blue-600'
-                    }`}
+                    className={`rounded-full text-[9px] px-1.5 ${requestTypeTagClass(currentRequest.requestType)}`}
                   >
                     {currentRequest.requestType.toUpperCase()}
                   </Badge>
-                  <span className="font-medium">
+                  <span className="font-semibold">
                     {currentRequest.operationName ?? currentRequest.endpoint ?? 'Request'}
                   </span>
-                  <span className="text-muted-foreground ml-auto tabular-nums">
+                  <span className="text-[var(--text3)] ml-auto tabular-nums">
                     #{playbackStatus.currentIndex + 1} / {playbackStatus.total}
                   </span>
                 </div>
-                <div className="text-muted-foreground truncate">{currentRequest.url}</div>
+                <div className="text-[var(--text3)] font-mono truncate">{currentRequest.url}</div>
                 {currentRequest.responseStatus != null && (
-                  <div className="text-muted-foreground">
+                  <div className="text-[var(--text3)]">
                     Status: {currentRequest.responseStatus}
                     {currentRequest.responseTime != null && ` &middot; ${currentRequest.responseTime}ms`}
                   </div>
@@ -447,15 +472,15 @@ export function TimeTravelPanel() {
 
               {/* Speed selector */}
               <div className="flex items-center gap-1 ml-auto">
-                <span className="text-[10px] text-muted-foreground">Speed:</span>
+                <span className="text-[10px] text-[var(--text3)]">Speed:</span>
                 {[0.5, 1, 2, 4].map((speed) => (
                   <button
                     key={speed}
                     onClick={() => handleSpeedChange(speed)}
-                    className={`rounded px-1.5 py-0.5 text-[10px] border transition-colors ${
+                    className={`rounded-full px-1.5 py-0.5 text-[10px] border transition-colors ${
                       playbackStatus.speed === speed
-                        ? 'bg-primary text-primary-foreground border-primary'
-                        : 'bg-background hover:bg-muted'
+                        ? 'bg-[var(--accent-strong)] text-[var(--accent-on)] border-transparent'
+                        : 'bg-background hover:bg-muted border-border'
                     }`}
                   >
                     {speed}x
@@ -468,12 +493,12 @@ export function TimeTravelPanel() {
       )}
 
       {/* Session list */}
-      <div className="rounded-md border flex-1 flex flex-col overflow-hidden">
-        <div className="px-3 py-2 border-b bg-muted/30 flex items-center justify-between shrink-0">
-          <div className="text-xs font-medium">Sessions ({sessions.length})</div>
+      <section className="rounded-xl border border-border flex-1 flex flex-col overflow-hidden">
+        <div className="px-4 py-3 border-b border-border bg-[var(--surface2)] flex items-center justify-between shrink-0">
+          <div className="text-xs font-semibold">Sessions ({sessions.length})</div>
         </div>
         {sessions.length === 0 ? (
-          <div className="flex items-center justify-center flex-1 text-xs text-muted-foreground py-8">
+          <div className="flex items-center justify-center flex-1 text-xs text-[var(--text3)] py-8">
             No sessions yet. Start recording to capture API traffic.
           </div>
         ) : (
@@ -490,7 +515,7 @@ export function TimeTravelPanel() {
             ))}
           </div>
         )}
-      </div>
+      </section>
 
       {/* Hidden file input for import */}
       <input

@@ -15,30 +15,30 @@ interface RequestItemProps {
 // ─── Method badge ─────────────────────────────────────────────────────────────
 
 const METHOD_STYLES: Record<string, string> = {
-  GQL:    'bg-pink-500/15 text-pink-400 ring-1 ring-pink-500/25',
-  GET:    'bg-emerald-500/12 text-emerald-400 ring-1 ring-emerald-500/20',
-  POST:   'bg-blue-500/12 text-blue-400 ring-1 ring-blue-500/20',
-  PUT:    'bg-amber-500/12 text-amber-400 ring-1 ring-amber-500/20',
-  PATCH:  'bg-amber-500/12 text-amber-400 ring-1 ring-amber-500/20',
-  DELETE: 'bg-red-500/12 text-red-400 ring-1 ring-red-500/20',
-  HEAD:   'bg-purple-500/12 text-purple-400 ring-1 ring-purple-500/20',
-  ALL:    'bg-muted text-muted-foreground ring-1 ring-border',
+  GQL:    'bg-[var(--t-gql-bg)] text-[var(--t-gql-fg)]',
+  GET:    'bg-[var(--m-get-bg)] text-[var(--m-get-fg)]',
+  POST:   'bg-[var(--m-post-bg)] text-[var(--m-post-fg)]',
+  PUT:    'bg-[var(--m-put-bg)] text-[var(--m-put-fg)]',
+  PATCH:  'bg-[var(--m-patch-bg)] text-[var(--m-patch-fg)]',
+  DELETE: 'bg-[var(--m-del-bg)] text-[var(--m-del-fg)]',
+  HEAD:   'bg-[var(--t-rest-bg)] text-[var(--t-rest-fg)]',
+  ALL:    'bg-muted text-muted-foreground',
 };
 
 // Extended method styles for static assets
 const STATIC_EXT_STYLES: Record<string, string> = {
-  js:   'bg-yellow-500/15 text-yellow-400 ring-1 ring-yellow-500/25',
-  mjs:  'bg-yellow-500/15 text-yellow-400 ring-1 ring-yellow-500/25',
-  jsx:  'bg-yellow-500/15 text-yellow-400 ring-1 ring-yellow-500/25',
-  ts:   'bg-blue-500/15 text-blue-300 ring-1 ring-blue-500/25',
-  tsx:  'bg-blue-500/15 text-blue-300 ring-1 ring-blue-500/25',
-  css:  'bg-purple-500/15 text-purple-400 ring-1 ring-purple-500/25',
-  html: 'bg-orange-500/15 text-orange-400 ring-1 ring-orange-500/25',
-  htm:  'bg-orange-500/15 text-orange-400 ring-1 ring-orange-500/25',
-  json: 'bg-emerald-500/15 text-emerald-400 ring-1 ring-emerald-500/25',
-  svg:  'bg-pink-500/15 text-pink-400 ring-1 ring-pink-500/25',
-  xml:  'bg-muted text-muted-foreground ring-1 ring-border',
-  wasm: 'bg-red-500/15 text-red-400 ring-1 ring-red-500/25',
+  js:   'bg-[var(--t-static-bg)] text-[var(--t-static-fg)]',
+  mjs:  'bg-[var(--t-static-bg)] text-[var(--t-static-fg)]',
+  jsx:  'bg-[var(--t-static-bg)] text-[var(--t-static-fg)]',
+  ts:   'bg-[var(--t-static-bg)] text-[var(--t-static-fg)]',
+  tsx:  'bg-[var(--t-static-bg)] text-[var(--t-static-fg)]',
+  css:  'bg-[var(--t-static-bg)] text-[var(--t-static-fg)]',
+  html: 'bg-[var(--t-static-bg)] text-[var(--t-static-fg)]',
+  htm:  'bg-[var(--t-static-bg)] text-[var(--t-static-fg)]',
+  json: 'bg-[var(--t-json-bg)] text-[var(--t-json-fg)]',
+  svg:  'bg-[var(--t-static-bg)] text-[var(--t-static-fg)]',
+  xml:  'bg-[var(--t-static-bg)] text-[var(--t-static-fg)]',
+  wasm: 'bg-[var(--t-static-bg)] text-[var(--t-static-fg)]',
 };
 
 function getStaticBadge(url: string): { label: string; style: string } {
@@ -47,10 +47,10 @@ function getStaticBadge(url: string): { label: string; style: string } {
     const ext = pathname.split('.').pop() ?? '';
     return {
       label: ext.slice(0, 4).toUpperCase() || 'ASSET',
-      style: STATIC_EXT_STYLES[ext] ?? 'bg-muted text-muted-foreground ring-1 ring-border',
+      style: STATIC_EXT_STYLES[ext] ?? 'bg-[var(--t-static-bg)] text-[var(--t-static-fg)]',
     };
   } catch {
-    return { label: 'ASSET', style: 'bg-muted text-muted-foreground ring-1 ring-border' };
+    return { label: 'ASSET', style: 'bg-[var(--t-static-bg)] text-[var(--t-static-fg)]' };
   }
 }
 
@@ -59,7 +59,7 @@ function MethodBadge({ method, type, url }: { method: string; type: 'graphql' | 
     const { label, style } = getStaticBadge(url);
     return (
       <span className={cn(
-        'inline-flex items-center justify-center rounded px-1 py-px text-[10px] font-bold uppercase shrink-0 w-[34px] font-mono tracking-wide',
+        'inline-flex items-center justify-center rounded-[6px] px-1 py-0.5 text-[11px] font-bold uppercase shrink-0 w-[52px] font-mono tracking-wide',
         style
       )}>
         {label}
@@ -70,7 +70,7 @@ function MethodBadge({ method, type, url }: { method: string; type: 'graphql' | 
   const style = METHOD_STYLES[key] ?? METHOD_STYLES['ALL'];
   return (
     <span className={cn(
-      'inline-flex items-center justify-center rounded px-1.5 py-px text-[10px] font-bold uppercase shrink-0 w-[34px] font-mono tracking-wide',
+      'inline-flex items-center justify-center rounded-[6px] px-1 py-0.5 text-[11px] font-bold uppercase shrink-0 w-[52px] font-mono tracking-wide',
       style
     )}>
       {key}
@@ -83,19 +83,20 @@ function MethodBadge({ method, type, url }: { method: string; type: 'graphql' | 
 function StatusBadge({ status }: { status: number | undefined }) {
   if (status === undefined) return null;
 
-  const style =
-    status >= 500 ? 'text-red-400 bg-red-500/10 ring-red-500/25' :
-    status >= 400 ? 'text-red-400 bg-red-500/10 ring-red-500/25' :
-    status >= 300 ? 'text-amber-400 bg-amber-500/10 ring-amber-500/25' :
-    status >= 200 ? 'text-emerald-400 bg-emerald-500/10 ring-emerald-500/25' :
-                    'text-muted-foreground bg-muted ring-border';
+  const isOk = status < 400;
+  const isWarn = status >= 300 && status < 400;
+  const style = isWarn
+    ? 'text-[var(--warn)] bg-[var(--warn-bg)]'
+    : isOk
+    ? 'text-[var(--ok)] bg-[var(--ok-bg)]'
+    : 'text-[var(--err)] bg-[var(--err-bg)]';
 
   return (
     <span className={cn(
-      'inline-flex items-center rounded px-1.5 py-px text-[10px] font-mono font-medium tabular-nums shrink-0 ring-1',
+      'inline-flex items-center gap-1 rounded-[6px] px-1.5 py-0.5 text-[11px] font-mono font-bold tabular-nums shrink-0',
       style
     )}>
-      {status}
+      {isOk ? '✓' : '⚠'} {status}
     </span>
   );
 }
@@ -123,8 +124,8 @@ function TimingBadge({ request }: { request: LogEntry }) {
   if (isPending) {
     return (
       <span className={cn(
-        'inline-flex items-center gap-1 rounded px-1.5 py-px text-[10px] font-mono font-medium tabular-nums shrink-0',
-        'bg-amber-500/10 text-amber-400 ring-1 ring-amber-500/20 apilot-pending-pulse'
+        'inline-flex items-center justify-end gap-1 text-[12px] font-mono font-bold tabular-nums shrink-0 w-[52px]',
+        'text-[var(--warn)] apilot-pending-pulse'
       )}>
         {formatDuration(elapsed)}
       </span>
@@ -134,15 +135,12 @@ function TimingBadge({ request }: { request: LogEntry }) {
   const ms = request.responseTime;
   if (ms === undefined) return null;
 
-  const style =
-    ms > 3000 ? 'bg-red-500/10 text-red-400 ring-1 ring-red-500/20' :
-    ms > 1000  ? 'bg-amber-500/10 text-amber-400 ring-1 ring-amber-500/20' :
-                 'bg-emerald-500/10 text-emerald-400 ring-1 ring-emerald-500/20';
+  const isSlow = ms > 1000;
 
   return (
     <span className={cn(
-      'inline-flex items-center rounded px-1.5 py-px text-[10px] font-mono font-medium tabular-nums shrink-0',
-      style
+      'inline-flex items-center justify-end text-[12px] font-mono font-bold tabular-nums shrink-0 w-[52px]',
+      isSlow ? 'text-[var(--warn)]' : 'text-[var(--ok)]'
     )}>
       {formatDuration(ms)}
     </span>
@@ -160,7 +158,7 @@ function formatSize(bytes: number): string {
 function SizeBadge({ bytes }: { bytes: number | undefined }) {
   if (!bytes) return null;
   return (
-    <span className="inline-flex items-center rounded px-1.5 py-px text-[10px] font-mono tabular-nums shrink-0 text-muted-foreground/60">
+    <span className="inline-flex items-center justify-end text-[12px] font-mono tabular-nums shrink-0 w-[64px] text-[var(--text3)]">
       {formatSize(bytes)}
     </span>
   );
@@ -169,12 +167,12 @@ function SizeBadge({ bytes }: { bytes: number | undefined }) {
 // ─── Rule action badge ────────────────────────────────────────────────────────
 
 const ACTION_BADGE_STYLES: Record<string, { cls: string; label: string }> = {
-  mock:        { cls: 'bg-blue-500/15 text-blue-400 ring-1 ring-blue-500/30',       label: 'mock' },
-  block:       { cls: 'bg-red-500/15 text-red-400 ring-1 ring-red-500/30',          label: 'blocked' },
-  redirect:    { cls: 'bg-purple-500/15 text-purple-400 ring-1 ring-purple-500/30', label: 'redirect' },
-  delay:       { cls: 'bg-amber-500/15 text-amber-400 ring-1 ring-amber-500/30',    label: 'delay' },
-  modify:      { cls: 'bg-emerald-500/15 text-emerald-400 ring-1 ring-emerald-500/30', label: 'modify' },
-  passthrough: { cls: 'bg-muted text-muted-foreground ring-1 ring-border',           label: 'pass' },
+  mock:        { cls: 'bg-[var(--t-rest-bg)] text-[var(--t-rest-fg)]', label: 'mock' },
+  block:       { cls: 'bg-[var(--err-bg)] text-[var(--err)]',          label: 'blocked' },
+  redirect:    { cls: 'bg-[var(--t-gql-bg)] text-[var(--t-gql-fg)]',   label: 'redirect' },
+  delay:       { cls: 'bg-[var(--warn-bg)] text-[var(--warn)]',        label: 'delay' },
+  modify:      { cls: 'bg-[var(--ok-bg)] text-[var(--ok)]',            label: 'modify' },
+  passthrough: { cls: 'bg-muted text-muted-foreground',                label: 'pass' },
 };
 
 function RuleBadge({ request }: { request: LogEntry }) {
@@ -183,7 +181,7 @@ function RuleBadge({ request }: { request: LogEntry }) {
 
   const action = request.appliedRuleAction ?? 'match';
   const style = ACTION_BADGE_STYLES[action] ?? {
-    cls: 'bg-amber-500/15 text-amber-400 ring-1 ring-amber-500/30',
+    cls: 'bg-[var(--warn-bg)] text-[var(--warn)]',
     label: action,
   };
   const names = request.matchedRules!.join(', ');
@@ -193,7 +191,7 @@ function RuleBadge({ request }: { request: LogEntry }) {
 
   return (
     <span
-      className={cn('inline-flex items-center rounded px-1.5 py-px text-[10px] font-medium shrink-0', style.cls)}
+      className={cn('inline-flex items-center rounded-[6px] px-1.5 py-0.5 text-[10px] font-semibold shrink-0', style.cls)}
       title={`Rules applied: ${names}`}
     >
       ◆ {style.label}{extra}
@@ -218,24 +216,30 @@ export function RequestItem({ request, isExpanded, onToggle }: RequestItemProps)
 
   return (
     <div className={cn(
-      'border-b border-border/50 last:border-b-0 group/row',
-      hasMatchedRules && 'bg-amber-500/[0.04]',
+      'border-b border-border/50 last:border-b-0 group/row border-l-[3px]',
+      isExpanded ? 'border-l-[var(--accent-strong)]' : 'border-l-transparent',
+      hasMatchedRules && !isExpanded && 'bg-[var(--warn-bg)]',
       isExpanded && 'bg-muted/30'
     )}>
       {/* Row */}
       <div
+        role="row"
         className={cn(
-          'flex items-center gap-2 px-2.5 py-2 cursor-pointer select-none',
+          'flex items-center gap-3 px-3.5 py-[9px] cursor-pointer select-none',
           'hover:bg-muted/25 active:bg-muted/30 transition-colors duration-100'
         )}
         onClick={onToggle}
         onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && onToggle()}
-        role="button"
         tabIndex={0}
         aria-expanded={isExpanded}
       >
+        {/* Expand caret */}
+        <span className="text-[10px] text-muted-foreground/70 shrink-0 w-3 text-center">
+          {isExpanded ? '▼' : '▶'}
+        </span>
+
         {/* Timestamp — hidden on screens narrower than 400px */}
-        <span className="[@media(max-width:400px)]:hidden font-mono text-[11px] text-muted-foreground shrink-0 tabular-nums w-[58px]">
+        <span className="[@media(max-width:400px)]:hidden font-mono text-[11px] text-[var(--text3)] shrink-0 tabular-nums w-[58px]">
           {timestamp}
         </span>
 
@@ -246,13 +250,13 @@ export function RequestItem({ request, isExpanded, onToggle }: RequestItemProps)
         <div className="flex-1 min-w-0 leading-none">
           <div className="flex items-center gap-1.5 min-w-0">
             <span className={cn(
-              'text-[12px] font-medium truncate',
-              isExpanded ? 'text-foreground' : 'text-foreground/85'
+              'text-[12px] font-semibold truncate',
+              isExpanded ? 'text-foreground' : 'text-foreground/90'
             )} title={operationName}>
               {operationName}
             </span>
           </div>
-          <div className="text-[11px] text-muted-foreground truncate mt-px font-mono" title={request.url}>
+          <div className="text-[12px] text-muted-foreground truncate mt-px font-mono" title={request.url}>
             {request.url}
           </div>
           {/* On mobile: show timing + status inline below the URL */}
@@ -282,14 +286,14 @@ export function RequestItem({ request, isExpanded, onToggle }: RequestItemProps)
               - pointer:coarse (touch) → always visible */}
           <div className="flex items-center gap-1 [@media(pointer:fine)]:opacity-0 [@media(pointer:fine)]:group-hover/row:opacity-100 transition-opacity duration-100">
             <button
-              className="h-6 sm:h-5 px-2 sm:px-1.5 rounded text-[10px] font-medium text-muted-foreground hover:text-foreground active:text-foreground hover:bg-muted/60 active:bg-muted/60 transition-colors border border-border/50 hover:border-border"
+              className="h-6 sm:h-5 px-2 sm:px-1.5 rounded-md text-[10px] font-medium text-muted-foreground hover:text-foreground active:text-foreground hover:bg-muted/60 active:bg-muted/60 transition-colors border border-border/50 hover:border-border"
               title="Create rule from this request"
               onClick={() => setRuleFromRequest(request)}
             >
               + Rule
             </button>
             <button
-              className="h-6 sm:h-5 px-2 sm:px-1.5 rounded text-[10px] font-medium text-primary/70 hover:text-primary active:text-primary hover:bg-primary/10 active:bg-primary/10 transition-colors border border-primary/20 hover:border-primary/40"
+              className="h-6 sm:h-5 px-2 sm:px-1.5 rounded-md text-[10px] font-medium text-primary/70 hover:text-primary active:text-primary hover:bg-primary/10 active:bg-primary/10 transition-colors border border-primary/20 hover:border-primary/40"
               title="Generate AI mock"
               onClick={() => setAiMockRequest(request)}
             >

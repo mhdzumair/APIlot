@@ -198,17 +198,22 @@ export function RulesTab() {
   return (
     <div className="flex flex-col h-full gap-3 p-3">
       {/* Toolbar */}
-      <div className="flex items-center gap-2 shrink-0">
-        <Button size="sm" onClick={openAddDialog}>
+      <div className="flex items-center gap-3 shrink-0">
+        <Button
+          size="sm"
+          onClick={openAddDialog}
+          className="rounded-[9px] bg-[var(--accent-strong)] text-[var(--accent-on)] font-bold hover:bg-[var(--accent-strong)]/90"
+        >
           + Add Rule
         </Button>
-        <div className="ml-auto flex items-center gap-2">
-          <Button size="sm" variant="outline" onClick={handleExport} disabled={rules.size === 0}>
+        <div className="ml-auto flex items-center gap-2.5">
+          <Button size="sm" variant="outline" className="rounded-[9px]" onClick={handleExport} disabled={rules.size === 0}>
             Export
           </Button>
           <Button
             size="sm"
             variant="outline"
+            className="rounded-[9px]"
             onClick={() => importInputRef.current?.click()}
           >
             Import
@@ -220,10 +225,10 @@ export function RulesTab() {
             className="hidden"
             onChange={handleImportFile}
           />
+          <span className="text-xs text-[var(--text3)] shrink-0">
+            {rules.size} rule{rules.size !== 1 ? 's' : ''}
+          </span>
         </div>
-        <span className="text-xs text-muted-foreground shrink-0">
-          {rules.size} rule{rules.size !== 1 ? 's' : ''}
-        </span>
       </div>
 
       {/* Rules list */}

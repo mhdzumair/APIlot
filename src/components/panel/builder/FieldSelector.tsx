@@ -49,7 +49,10 @@ function FieldRow({ field, path, depth, selectedFields, allTypes, onToggle }: Fi
   return (
     <div>
       <div
-        className="flex items-center gap-1 py-0.5 hover:bg-accent/50 rounded pr-1 group"
+        className={cn(
+          'flex items-center gap-1 py-0.5 hover:bg-accent/50 rounded-[6px] pr-1 group',
+          !isChecked && 'bg-[var(--surface2)]/40'
+        )}
         style={{ paddingLeft: `${indent + 4}px` }}
       >
         {/* Expand toggle */}
@@ -89,10 +92,10 @@ function FieldRow({ field, path, depth, selectedFields, allTypes, onToggle }: Fi
           className="flex flex-1 items-baseline gap-1.5 cursor-pointer min-w-0"
           title={field.description}
         >
-          <span className="font-mono text-[11px] truncate text-foreground">
+          <span className="font-mono text-[13px] truncate text-foreground">
             {field.name}
           </span>
-          <span className="font-mono text-[10px] text-muted-foreground shrink-0">
+          <span className="font-mono text-[12px] text-[var(--text3)] shrink-0 ml-auto">
             {field.type}
           </span>
         </label>
@@ -161,10 +164,10 @@ export function FieldSelector({
       <div className="flex items-center gap-2 pb-1.5 shrink-0">
         <input
           type="text"
-          placeholder="Search fields..."
+          placeholder="Search fields…"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          className="flex-1 rounded border border-input bg-background px-2 py-1 text-xs outline-none focus-visible:ring-1 focus-visible:ring-ring placeholder:text-muted-foreground"
+          className="flex-1 rounded-[8px] border border-input bg-background px-2 py-1 text-xs outline-none focus-visible:ring-1 focus-visible:ring-ring placeholder:text-muted-foreground"
         />
         <Button
           variant="ghost"
@@ -185,7 +188,7 @@ export function FieldSelector({
       </div>
 
       {/* Field list */}
-      <div className="overflow-y-auto flex-1 min-h-0 rounded border border-input bg-background/50">
+      <div className="overflow-y-auto flex-1 min-h-0 max-h-[340px] rounded-[10px] border border-border bg-background/50">
         {filteredFields.length === 0 ? (
           <p className="p-3 text-xs text-muted-foreground italic">
             {search ? 'No fields match your search.' : 'No fields available.'}
@@ -208,7 +211,7 @@ export function FieldSelector({
       </div>
 
       {selectedFields.size > 0 && (
-        <p className="mt-1 text-[10px] text-muted-foreground shrink-0">
+        <p className="mt-1 text-[10px] text-[var(--text3)] shrink-0">
           {selectedFields.size} field{selectedFields.size !== 1 ? 's' : ''} selected
         </p>
       )}
